@@ -41,6 +41,8 @@ export class PrismaTransactionRepository implements ITransactionRepository {
     schoolUnitId?: number;
     type?: string;
     categoryId?: number;
+    startDate?: Date;
+    endDate?: Date;
   }): Promise<any[]> {
     const where: any = {};
     if (filter?.schoolUnitId !== undefined) {
@@ -51,6 +53,11 @@ export class PrismaTransactionRepository implements ITransactionRepository {
     }
     if (filter?.categoryId !== undefined) {
       where.categoryId = filter.categoryId;
+    }
+    if (filter?.startDate || filter?.endDate) {
+      where.date = {};
+      if (filter.startDate) where.date.gte = filter.startDate;
+      if (filter.endDate) where.date.lte = filter.endDate;
     }
 
     const transactions = await this.prisma.transaction.findMany({
@@ -73,5 +80,46 @@ export class PrismaTransactionRepository implements ITransactionRepository {
     });
 
     return transactions;
+  }
+
+  async getSummary(filter?: {
+    schoolUnitId?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{ totalIncome: number; totalExpense: number }> {
+    const where: any = {};
+    if (filter?.schoolUnitId !== undefined) {
+      where.schoolUnitId = filter.schoolUnitId;
+    }
+    if (filter?.startDate || filter?.endDate) {
+      where.date = {};
+      if (filter.startDate) where.date.gte = filter.startDate;
+      if (filter.endDate) where.date.lte = filter.endDate;
+    }
+
+    const incomeSum = await this.prisma.transaction.aggregate({
+      _sum: {
+        amount: true,
+      },
+      where: {
+        ...where,
+        type: "INCOME",
+      },
+    });
+
+    const expenseSum = await this.prisma.transaction.aggregate({
+      _sum: {
+        amount: true,
+      },
+      where: {
+        ...where,
+        type: "EXPENSE",
+      },
+    });
+
+    return {
+      totalIncome: incomeSum._sum.amount || 0,
+      totalExpense: expenseSum._sum.amount || 0,
+    };
   }
 }
