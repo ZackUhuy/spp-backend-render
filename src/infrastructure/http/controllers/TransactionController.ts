@@ -48,11 +48,18 @@ export class TransactionController {
   async getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = req.user!;
-      const { type, categoryId } = req.query;
+      const { type, categoryId, startDate, endDate } = req.query;
       let { schoolUnitId } = req.query;
 
-      // Aturan Isolasi Output
+      // Enforce Unit Isolation
       if (user.role === "UNIT_ADMIN") {
+        if (schoolUnitId && Number(schoolUnitId) !== user.schoolUnitId) {
+          res.status(403).json({
+            success: false,
+            message: "Akses ditolak: Anda tidak memiliki otoritas untuk mengelola unit sekolah ini",
+          });
+          return;
+        }
         schoolUnitId = user.schoolUnitId?.toString();
       }
 
@@ -60,13 +67,16 @@ export class TransactionController {
       if (schoolUnitId) filter.schoolUnitId = Number(schoolUnitId);
       if (type) filter.type = type as string;
       if (categoryId) filter.categoryId = Number(categoryId);
+      if (startDate) filter.startDate = new Date(startDate as string);
+      if (endDate) filter.endDate = new Date(endDate as string);
 
       const result = await this.getTransactionsUseCase.execute(filter);
 
       res.status(200).json({
         success: true,
-        message: "Riwayat transaksi kas berhasil diambil",
-        data: result,
+        message: "Data rekapitulasi jurnal kas berhasil diambil",
+        summary: result.summary,
+        data: result.data,
       });
     } catch (error) {
       next(error);
