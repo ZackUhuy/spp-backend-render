@@ -1,6 +1,8 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import httpLogger from "../infrastructure/http/middleware/httpLogger.js";
+import { logger } from "../infrastructure/services/WinstonLogger.js";
 import authRoutes from "../infrastructure/http/routes/authRoutes.js";
 import sppTariffRoutes from "../infrastructure/http/routes/sppTariffRoutes.js";
 import categoryRoutes from "../infrastructure/http/routes/categoryRoutes.js";
@@ -10,6 +12,7 @@ import invoiceRoutes from "../infrastructure/http/routes/invoiceRoutes.js";
 
 const app = express();
 
+app.use(httpLogger);
 app.use(express.json());
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
@@ -26,6 +29,10 @@ app.use("/api/invoices", invoiceRoutes);
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const message = err.message || "Internal Server Error";
   const status = message === "Email atau password salah" ? 401 : 500;
+
+  if (status === 500) {
+    logger.error(err.message, err.stack);
+  }
 
   res.status(status).json({
     success: false,
