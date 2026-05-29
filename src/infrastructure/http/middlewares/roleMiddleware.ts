@@ -25,12 +25,12 @@ export const roleMiddleware = (allowedRoles: Role[]) => {
     // 2. Logika Proteksi Cross-Unit Sekolah
     if (user.role === "UNIT_ADMIN") {
       const requestedUnitId =
-        req.params.schoolUnitId ||
-        req.query.schoolUnitId ||
-        req.body.schoolUnitId ||
-        req.params.unitId ||
-        req.query.unitId ||
-        req.body.unitId;
+        req.params?.schoolUnitId ||
+        req.query?.schoolUnitId ||
+        req.body?.schoolUnitId ||
+        req.params?.unitId ||
+        req.query?.unitId ||
+        req.body?.unitId;
 
       if (requestedUnitId !== undefined && requestedUnitId !== null) {
         // Pastikan perbandingannya benar (konversi ke number jika perlu)
