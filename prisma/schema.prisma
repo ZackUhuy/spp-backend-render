@@ -65,6 +65,7 @@ model User {
   id           Int         @id @default(autoincrement())
   name         String      @db.VarChar(255)
   email        String      @unique @db.VarChar(255)
+  phoneNumber  String?     @unique @map("phone_number") @db.VarChar(20)
   password     String      @db.VarChar(255)
   role         Role
   schoolUnitId Int?        @map("school_unit_id")
@@ -97,6 +98,7 @@ model Student {
   id                 Int         @id @default(autoincrement())
   studentNumber      String      @unique @map("student_number") @db.VarChar(50) // NIS / Nomor Induk Siswa
   name               String      @db.VarChar(255)
+  className          String      @map("class_name") @db.VarChar(50)
   schoolUnitId       Int         @map("school_unit_id")
   parentId           Int         @map("parent_id")
   enrollmentYear     Int         @map("enrollment_year") // Tahun angkatan masuk
