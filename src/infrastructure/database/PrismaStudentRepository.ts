@@ -42,7 +42,7 @@ export class PrismaStudentRepository implements IStudentRepository {
           className: studentData.className,
           schoolUnitId: studentData.schoolUnitId,
           enrollmentYear: studentData.enrollmentYear,
-          discountPercentage: studentData.discountPercentage,
+          discountAmount: studentData.discountAmount,
           parentId: finalParentId,
         },
       });
@@ -58,7 +58,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       result.schoolUnitId,
       result.parentId,
       result.enrollmentYear,
-      result.discountPercentage
+      result.discountAmount
     );
   }
 
@@ -108,7 +108,7 @@ export class PrismaStudentRepository implements IStudentRepository {
         s.schoolUnitId,
         s.parentId,
         s.enrollmentYear,
-        s.discountPercentage
+        s.discountAmount
       );
 
       return Object.assign(student, { parent: s.parent });
@@ -130,7 +130,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       student.schoolUnitId,
       student.parentId,
       student.enrollmentYear,
-      student.discountPercentage
+      student.discountAmount
     );
   }
 
@@ -149,7 +149,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       student.schoolUnitId,
       student.parentId,
       student.enrollmentYear,
-      student.discountPercentage
+      student.discountAmount
     );
   }
 
@@ -160,7 +160,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       className?: string;
       schoolUnitId?: number;
       enrollmentYear?: number;
-      discountPercentage?: number;
+      discountAmount?: number;
       birthDate?: string | null;
       parentName?: string;
       parentEmail?: string | null;
@@ -172,7 +172,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       className,
       schoolUnitId,
       enrollmentYear,
-      discountPercentage,
+      discountAmount,
       birthDate,
       parentName,
       parentEmail,
@@ -183,7 +183,7 @@ export class PrismaStudentRepository implements IStudentRepository {
     if (name !== undefined) studentData.name = name;
     if (className !== undefined) studentData.className = className;
     if (enrollmentYear !== undefined) studentData.enrollmentYear = enrollmentYear;
-    if (discountPercentage !== undefined) studentData.discountPercentage = discountPercentage;
+    if (discountAmount !== undefined) studentData.discountAmount = discountAmount;
     if (schoolUnitId !== undefined) {
       studentData.schoolUnit = {
         connect: { id: schoolUnitId }
@@ -215,7 +215,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       updated.schoolUnitId,
       updated.parentId,
       updated.enrollmentYear,
-      updated.discountPercentage
+      updated.discountAmount
     );
   }
 

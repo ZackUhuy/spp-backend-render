@@ -30,6 +30,13 @@ const invoiceController = new InvoiceController(
 );
 
 // Routes
+router.get(
+  "/",
+  authMiddleware,
+  roleMiddleware(["SUPER_ADMIN", "UNIT_ADMIN"]),
+  invoiceController.getAllInvoices.bind(invoiceController)
+);
+
 router.post(
   "/pay-offline",
   authMiddleware,
@@ -78,9 +85,18 @@ router.post(
   invoiceController.handlePakasirWebhook.bind(invoiceController)
 );
 
-router.post(
-  "/pakasir/simulate",
-  invoiceController.simulatePakasirPayment.bind(invoiceController)
+router.put(
+  "/:id/status",
+  authMiddleware,
+  roleMiddleware(["SUPER_ADMIN", "UNIT_ADMIN"]),
+  invoiceController.updateStatus.bind(invoiceController)
+);
+
+router.delete(
+  "/:id",
+  authMiddleware,
+  roleMiddleware(["SUPER_ADMIN", "UNIT_ADMIN"]),
+  invoiceController.deleteInvoice.bind(invoiceController)
 );
 
 export default router;

@@ -11,7 +11,7 @@ export interface CreateStudentRequest {
   className: string;
   schoolUnitId: number;
   enrollmentYear: number;
-  discountPercentage: number;
+  discountAmount: number;
   parentName: string;
   parentEmail?: string;
   parentPhoneNumber: string;
@@ -77,7 +77,7 @@ export class CreateStudentUseCase {
         className: data.className,
         schoolUnitId: data.schoolUnitId,
         enrollmentYear: data.enrollmentYear,
-        discountPercentage: data.discountPercentage,
+        discountAmount: data.discountAmount,
         parentId: parentId as any,
       },
       parentDataToCreate

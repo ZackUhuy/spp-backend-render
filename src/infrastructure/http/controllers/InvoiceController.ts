@@ -111,7 +111,7 @@ export class InvoiceController {
         if (!tariff) continue;
 
         const baseAmount = tariff.amount;
-        const discountApplied = Math.floor((baseAmount * student.discountPercentage) / 100);
+        const discountApplied = Math.min(baseAmount, student.discountAmount);
         const netAmount = baseAmount - discountApplied;
 
         if (year < student.enrollmentYear) {
@@ -299,7 +299,7 @@ export class InvoiceController {
           if (!tariff) continue;
 
           const baseAmount = tariff.amount;
-          const discountApplied = Math.floor((baseAmount * student.discountPercentage) / 100);
+          const discountApplied = Math.min(baseAmount, student.discountAmount);
           const netAmount = baseAmount - discountApplied;
 
           if (year < student.enrollmentYear) {
@@ -442,7 +442,7 @@ export class InvoiceController {
       }
 
       const baseAmount = tariff.amount;
-      const discountApplied = Math.floor((baseAmount * student.discountPercentage) / 100);
+      const discountApplied = Math.min(baseAmount, student.discountAmount);
       const netAmount = baseAmount - discountApplied;
 
       if (year < student.enrollmentYear) {
@@ -587,7 +587,7 @@ export class InvoiceController {
       }
 
       const baseAmount = tariff.amount;
-      const discountApplied = Math.floor((baseAmount * student.discountPercentage) / 100);
+      const discountApplied = Math.min(baseAmount, student.discountAmount);
       const amountToPay = baseAmount - discountApplied;
 
       const mockOrderId = `MOCK-MIDTRANS-${Date.now()}`;
@@ -734,10 +734,10 @@ export class InvoiceController {
       const rawBaseAmount = tariff ? Number(tariff.amount) : 0;
       const baseAmount = isNaN(rawBaseAmount) || rawBaseAmount <= 0 ? 185000 : rawBaseAmount;
 
-      const rawDiscount = student ? Number(student.discountPercentage) : 0;
-      const discountPercent = isNaN(rawDiscount) ? 0 : rawDiscount;
+      const rawDiscount = student ? Number(student.discountAmount) : 0;
+      const discountVal = isNaN(rawDiscount) ? 0 : rawDiscount;
 
-      const discountApplied = Math.floor((baseAmount * discountPercent) / 100);
+      const discountApplied = Math.min(baseAmount, discountVal);
       const calculatedAmount = baseAmount - discountApplied;
       const amountToPay = isNaN(calculatedAmount) || calculatedAmount <= 0 
         ? 1000 
@@ -1115,6 +1115,196 @@ export class InvoiceController {
       res.status(200).json({
         success: true,
         message: "Simulasi pembayaran Pakasir berhasil dipicu",
+      });
+    } catch (error: any) {
+      next(error);
+    }
+  }
+
+  async updateStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+      const { status } = req.body;
+
+      if (!status || !["PAID", "PENDING"].includes(status)) {
+        res.status(400).json({ success: false, message: "Status tidak valid. Gunakan PAID atau PENDING." });
+        return;
+      }
+
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: parseInt(id) },
+        include: { student: true },
+      });
+
+      if (!invoice) {
+        res.status(404).json({ success: false, message: "Tagihan tidak ditemukan" });
+        return;
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const updatedInvoice = await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { status: status as any },
+        });
+
+        if (status === "PAID") {
+          const existingTx = await tx.transaction.findFirst({
+            where: { invoiceId: invoice.id, type: "INCOME" as any },
+          });
+
+          if (!existingTx) {
+            let category = await tx.category.findFirst({
+              where: {
+                name: { equals: "SPP", mode: "insensitive" },
+                type: "INCOME",
+              },
+            });
+            if (!category) {
+              category = await tx.category.create({
+                data: {
+                  name: "SPP",
+                  type: "INCOME",
+                  schoolUnitId: null,
+                },
+              });
+            }
+
+            await tx.transaction.create({
+              data: {
+                type: "INCOME" as any,
+                categoryId: category.id,
+                paymentMethod: "CASH" as any,
+                amount: invoice.amount,
+                description: `Pembaruan status lunas manual oleh Admin SPP bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
+                schoolUnitId: invoice.student.schoolUnitId,
+                recordedById: req.user?.id || null,
+                invoiceId: invoice.id,
+              },
+            });
+          }
+        } else {
+          await tx.transaction.deleteMany({
+            where: { invoiceId: invoice.id },
+          });
+        }
+
+        return updatedInvoice;
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Status tagihan berhasil diperbarui",
+        data: result,
+      });
+    } catch (error: any) {
+      next(error);
+    }
+  }
+
+  async deleteInvoice(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params as { id: string };
+
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: parseInt(id) },
+      });
+
+      if (!invoice) {
+        res.status(404).json({ success: false, message: "Tagihan tidak ditemukan" });
+        return;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.transaction.deleteMany({
+          where: { invoiceId: invoice.id },
+        });
+
+        await tx.invoice.delete({
+          where: { id: invoice.id },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Tagihan dan seluruh riwayat pembayarannya berhasil dihapus",
+      });
+    } catch (error: any) {
+      next(error);
+    }
+  }
+
+  async getAllInvoices(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { schoolUnitId, className, status, month, year, search, page = "1", limit = "50" } = req.query;
+
+      const filter: any = {};
+
+      // Role authorization
+      if (req.user?.role === "UNIT_ADMIN") {
+        filter.student = { schoolUnitId: req.user.schoolUnitId };
+      } else if (schoolUnitId) {
+        filter.student = { schoolUnitId: parseInt(schoolUnitId as string) };
+      }
+
+      if (className) {
+        if (!filter.student) filter.student = {};
+        filter.student.className = className as string;
+      }
+
+      if (search) {
+        if (!filter.student) filter.student = {};
+        filter.student.OR = [
+          { name: { contains: search as string, mode: "insensitive" } },
+          { studentNumber: { contains: search as string } }
+        ];
+      }
+
+      if (status) {
+        filter.status = status as any;
+      }
+
+      if (month) {
+        filter.month = parseInt(month as string);
+      }
+
+      if (year) {
+        filter.year = parseInt(year as string);
+      }
+
+      const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+      const take = parseInt(limit as string);
+
+      const [invoices, total] = await Promise.all([
+        prisma.invoice.findMany({
+          where: filter,
+          include: {
+            student: {
+              include: {
+                parent: true
+              }
+            },
+            transactions: true
+          },
+          orderBy: [
+            { year: "desc" },
+            { month: "desc" },
+            { id: "desc" }
+          ],
+          skip,
+          take
+        }),
+        prisma.invoice.count({ where: filter })
+      ]);
+
+      res.status(200).json({
+        success: true,
+        data: invoices,
+        pagination: {
+          total,
+          page: parseInt(page as string),
+          limit: take,
+          totalPages: Math.ceil(total / take)
+        }
       });
     } catch (error: any) {
       next(error);

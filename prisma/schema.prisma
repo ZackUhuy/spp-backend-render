@@ -101,7 +101,7 @@ model Student {
   schoolUnitId       Int         @map("school_unit_id")
   parentId           Int         @map("parent_id")
   enrollmentYear     Int         @map("enrollment_year") // Tahun angkatan masuk
-  discountPercentage Int         @default(0) @map("discount_percentage") // Persentase diskon (0-100)
+  discountAmount     Int         @default(0) @map("discount_percentage") // Nominal diskon dalam Rupiah (potongan langsung)
 
   // Relasi
   // Restrict mencegah penghapusan unit/parent jika masih ada data siswa aktif yang terikat dengannya

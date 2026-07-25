@@ -31,7 +31,7 @@ describe('CreateStudentUseCase', () => {
     className: '10A',
     schoolUnitId: 1,
     enrollmentYear: 2023,
-    discountPercentage: 10,
+    discountAmount: 15000,
     parentName: 'Parent Doe',
     parentPhoneNumber: '08123456789',
     parentEmail: 'parent@example.com',
@@ -58,7 +58,7 @@ describe('CreateStudentUseCase', () => {
       studentData.schoolUnitId,
       10, // parentId
       studentData.enrollmentYear,
-      studentData.discountPercentage
+      studentData.discountAmount
     );
     mockStudentRepository.create.mockResolvedValue(expectedStudent);
 
@@ -93,7 +93,7 @@ describe('CreateStudentUseCase', () => {
       studentData.schoolUnitId,
       10,
       studentData.enrollmentYear,
-      studentData.discountPercentage
+      studentData.discountAmount
     );
     mockStudentRepository.create.mockResolvedValue(expectedStudent);
 

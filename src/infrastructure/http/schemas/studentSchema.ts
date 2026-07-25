@@ -9,7 +9,7 @@ export const createStudentSchema = z.object({
     className: z.string({ required_error: "Kelas wajib diisi" }),
     schoolUnitId: z.number({ required_error: "ID unit sekolah wajib diisi" }).int(),
     enrollmentYear: z.number({ required_error: "Tahun angkatan wajib diisi" }).int(),
-    discountPercentage: z.number().min(0).max(100).optional(),
+    discountAmount: z.number().min(0).optional(),
     parentName: z.string({ required_error: "Nama orang tua wajib diisi" }),
     parentEmail: z
       .string()

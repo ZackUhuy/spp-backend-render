@@ -12,7 +12,7 @@ export class UpdateStudentUseCase {
       className?: string;
       schoolUnitId?: number;
       enrollmentYear?: number;
-      discountPercentage?: number;
+      discountAmount?: number;
       birthDate?: string | null;
       parentName?: string;
       parentEmail?: string | null;

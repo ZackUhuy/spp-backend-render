@@ -52,7 +52,7 @@ export class ProcessOfflinePaymentUseCase {
       }
 
       const baseAmount = tariff.amount;
-      const discountApplied = Math.floor((baseAmount * student.discountPercentage) / 100);
+      const discountApplied = Math.min(baseAmount, student.discountAmount);
       amountToPay = baseAmount - discountApplied;
 
       invoiceData = {
