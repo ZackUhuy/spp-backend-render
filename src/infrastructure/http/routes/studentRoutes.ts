@@ -139,7 +139,7 @@ router.post(
           const className = (row.kelas || row.className || "N/A").toString().trim();
           const unitName = (row.unit || row.schoolUnitName || "SD").toString().trim();
           const enrollmentYearStr = (row.angkatan || row.enrollmentYear || new Date().getFullYear()).toString().trim();
-          const discountStr = (row.diskon || row.discountPercentage || "0").toString().trim();
+          const discountStr = (row.diskon || row.discountAmount || row.discountPercentage || "0").toString().trim();
           const birthDate = (row.tanggal_lahir || row.birthDate || "").toString().trim();
           const parentName = (row.nama_ortu || row.parentName || `Wali dari ${name}`).toString().trim();
           let parentPhoneNumber = (row.hp_ortu || row.parentPhoneNumber || "").toString().trim();
@@ -160,7 +160,7 @@ router.post(
 
           const schoolUnitId = getUnitIdByName(unitName);
           const enrollmentYear = Number(enrollmentYearStr) || new Date().getFullYear();
-          const discountPercentage = Number(discountStr) || 0;
+          const discountAmount = Number(discountStr) || 0;
 
           if (authResult.role === "UNIT_ADMIN" && schoolUnitId !== authResult.schoolUnitId) {
             throw new Error(`Akses ditolak: Baris ${index + 1} berada pada unit yang berbeda dari kewenangan Anda`);
@@ -212,7 +212,7 @@ router.post(
                   className,
                   schoolUnitId,
                   enrollmentYear,
-                  discountPercentage,
+                  discountAmount,
                   parentId: parentUser.id,
                 },
               });
@@ -224,7 +224,7 @@ router.post(
                   className,
                   schoolUnitId,
                   enrollmentYear,
-                  discountPercentage,
+                  discountAmount,
                   parentId: parentUser.id,
                 },
               });

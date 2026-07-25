@@ -32,7 +32,7 @@ describe('UpdateStudentUseCase', () => {
   });
 
   it('should allow UNIT_ADMIN to update student in their unit', async () => {
-    const updateData = { discountPercentage: 15 };
+    const updateData = { discountAmount: 15000 };
     const updatedStudent = { ...mockStudent, ...updateData };
 
     mockStudentRepository.findById.mockResolvedValue(mockStudent);
