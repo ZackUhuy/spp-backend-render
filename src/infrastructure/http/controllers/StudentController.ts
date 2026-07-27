@@ -56,14 +56,14 @@ export class StudentController {
 
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      let { schoolUnitId, search, className } = req.query;
+      let { schoolUnitId, search, className, discount } = req.query;
 
       // Jika UNIT_ADMIN, paksa schoolUnitId miliknya
       if (req.user?.role === "UNIT_ADMIN") {
         schoolUnitId = req.user.schoolUnitId?.toString();
       }
 
-      const filter: { schoolUnitId?: number; search?: string; className?: string } = {};
+      const filter: { schoolUnitId?: number; search?: string; className?: string; discount?: string } = {};
       if (schoolUnitId) {
         filter.schoolUnitId = parseInt(schoolUnitId as string);
       }
@@ -72,6 +72,9 @@ export class StudentController {
       }
       if (className) {
         filter.className = className as string;
+      }
+      if (discount) {
+        filter.discount = discount as string;
       }
 
       const students = await this.getStudentsUseCase.execute(filter);

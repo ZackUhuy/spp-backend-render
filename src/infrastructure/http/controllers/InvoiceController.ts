@@ -473,6 +473,11 @@ export class InvoiceController {
           (inv) => inv.month === month && inv.invoiceType === ("SPP" as any)
         );
         if (existing) {
+          if (existing.status === "PENDING") {
+            existing.baseAmount = baseAmount;
+            existing.discountApplied = discountApplied;
+            existing.amount = netAmount;
+          }
           return existing;
         }
         return {
@@ -898,7 +903,11 @@ export class InvoiceController {
         await prisma.$transaction(async (tx) => {
           await tx.invoice.update({
             where: { id: invoice.id },
-            data: { status: "PAID" as any },
+            data: {
+              status: "PAID" as any,
+              amount: Number(amountVal),
+              discountApplied: invoice.baseAmount - Number(amountVal),
+            },
           });
 
           const existingTx = await tx.transaction.findFirst({
@@ -987,9 +996,14 @@ export class InvoiceController {
       }
 
       await prisma.$transaction(async (tx) => {
+        const actualAmount = Number(amount) || invoice.amount;
         await tx.invoice.update({
           where: { id: invoice.id },
-          data: { status: "PAID" as any },
+          data: {
+            status: "PAID" as any,
+            amount: actualAmount,
+            discountApplied: invoice.baseAmount - actualAmount,
+          },
         });
 
         let category = await tx.category.findFirst({
@@ -1075,9 +1089,14 @@ export class InvoiceController {
 
         if (invoice && (invoice.status as any) !== "PAID") {
           await prisma.$transaction(async (tx) => {
+            const actualAmount = Number(amount) || invoice.amount;
             await tx.invoice.update({
               where: { id: invoice.id },
-              data: { status: "PAID" as any },
+              data: {
+                status: "PAID" as any,
+                amount: actualAmount,
+                discountApplied: invoice.baseAmount - actualAmount,
+              },
             });
 
             let category = await tx.category.findFirst({
