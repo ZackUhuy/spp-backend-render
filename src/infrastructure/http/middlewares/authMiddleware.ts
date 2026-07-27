@@ -21,6 +21,23 @@ export const authMiddleware = (
   try {
     const decoded = tokenService.verifyToken(token);
     req.user = decoded;
+
+    // Sliding session: Auto-refresh token and cookie on active API requests
+    const newToken = tokenService.generateToken({
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role,
+      schoolUnitId: decoded.schoolUnitId,
+    });
+
+    const isProduction = process.env.NODE_ENV === "production" || req.headers["x-forwarded-proto"] === "https";
+    res.cookie("token", newToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "strict",
+      maxAge: 15 * 60 * 1000, // extend for another 15 minutes
+    });
+
     next();
   } catch (error) {
     res.status(401).json({

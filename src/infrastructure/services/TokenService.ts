@@ -16,7 +16,7 @@ export class TokenService {
   }
 
   generateToken(payload: TokenPayload): string {
-    return jwt.sign(payload, this.secret, { expiresIn: "1d" });
+    return jwt.sign(payload, this.secret, { expiresIn: "15m" });
   }
 
   verifyToken(token: string): TokenPayload {
