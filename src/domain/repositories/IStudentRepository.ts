@@ -14,6 +14,7 @@ export interface IStudentRepository {
     schoolUnitId?: number;
     search?: string;
     className?: string;
+    discount?: string;
   }): Promise<
     (Student & { parent: { name: string; email: string; phoneNumber: string | null } })[]
   >;

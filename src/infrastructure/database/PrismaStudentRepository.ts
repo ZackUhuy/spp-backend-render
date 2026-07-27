@@ -66,6 +66,7 @@ export class PrismaStudentRepository implements IStudentRepository {
     schoolUnitId?: number;
     search?: string;
     className?: string;
+    discount?: string;
   }): Promise<
     (Student & { parent: { name: string; email: string; phoneNumber: string | null } })[]
   > {
@@ -77,6 +78,14 @@ export class PrismaStudentRepository implements IStudentRepository {
 
     if (filter?.className) {
       where.className = filter.className;
+    }
+
+    if (filter?.discount) {
+      if (filter.discount === "yes") {
+        where.discountAmount = { gt: 0 };
+      } else if (filter.discount === "no") {
+        where.discountAmount = 0;
+      }
     }
 
     if (filter?.search) {
