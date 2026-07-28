@@ -17,21 +17,21 @@ async function main() {
 
   // 2. Seed Data Master: School Units (Unit Sekolah)
   console.log('Seeding data unit sekolah...');
-  const unitRA = await prisma.schoolUnit.upsert({
+  const unitKB = await prisma.schoolUnit.upsert({
     where: { id: 1 },
-    update: {},
+    update: { name: 'KB' },
     create: {
       id: 1,
-      name: 'RA/KB',
+      name: 'KB',
     },
   });
 
-  const unitTK = await prisma.schoolUnit.upsert({
+  const unitRA = await prisma.schoolUnit.upsert({
     where: { id: 2 },
-    update: {},
+    update: { name: 'RA' },
     create: {
       id: 2,
-      name: 'TK',
+      name: 'RA',
     },
   });
 
@@ -148,13 +148,13 @@ async function main() {
   await prisma.sppTariff.upsert({
     where: {
       uq_school_unit_enrollment_year: {
-        schoolUnitId: unitTK.id,
+        schoolUnitId: unitRA.id,
         enrollmentYear: 2025,
       },
     },
     update: {},
     create: {
-      schoolUnitId: unitTK.id,
+      schoolUnitId: unitRA.id,
       enrollmentYear: 2025,
       amount: 120000,
     },
