@@ -9,6 +9,11 @@ export class CreateSppTariffUseCase {
     schoolUnitId: number;
     enrollmentYear: number;
     amount: number;
+    developmentFee?: number;
+    reRegistrationFee?: number;
+    equipmentFee?: number;
+    extracurricularFee?: number;
+    uniformFee?: number;
   }): Promise<SppTariff> {
     const existing = await this.sppTariffRepository.findByUnitAndYear(
       data.schoolUnitId,
@@ -21,6 +26,15 @@ export class CreateSppTariffUseCase {
       );
     }
 
-    return await this.sppTariffRepository.create(data);
+    return await this.sppTariffRepository.create({
+      schoolUnitId: data.schoolUnitId,
+      enrollmentYear: data.enrollmentYear,
+      amount: data.amount,
+      developmentFee: data.developmentFee ?? 0,
+      reRegistrationFee: data.reRegistrationFee ?? 0,
+      equipmentFee: data.equipmentFee ?? 0,
+      extracurricularFee: data.extracurricularFee ?? 0,
+      uniformFee: data.uniformFee ?? 0,
+    });
   }
 }

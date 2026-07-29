@@ -58,10 +58,17 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
         });
       }
 
-      // Ensure 'SPP' income category exists in database to prevent FK constraint violation
+      // Ensure appropriate income category exists in database to prevent FK constraint violation
+      let categoryName = "SPP";
+      if (invoiceData.invoiceType === "UANG_PENGEMBANGAN") categoryName = "Uang Pengembangan";
+      else if (invoiceData.invoiceType === "DAFTAR_ULANG") categoryName = "Daftar Ulang";
+      else if (invoiceData.invoiceType === "UANG_PERALATAN") categoryName = "Uang Peralatan";
+      else if (invoiceData.invoiceType === "EKSTRAKURIKULER") categoryName = "Uang Ekstrakurikuler";
+      else if (invoiceData.invoiceType === "SERAGAM") categoryName = "Uang Seragam";
+
       let category = await tx.category.findFirst({
         where: {
-          name: { equals: "SPP", mode: "insensitive" },
+          name: { equals: categoryName, mode: "insensitive" },
           type: "INCOME",
         },
       });
@@ -69,7 +76,7 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
       if (!category) {
         category = await tx.category.create({
           data: {
-            name: "SPP",
+            name: categoryName,
             type: "INCOME",
             schoolUnitId: null,
           },

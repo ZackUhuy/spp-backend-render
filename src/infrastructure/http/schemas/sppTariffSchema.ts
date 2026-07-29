@@ -15,6 +15,11 @@ export const sppTariffSchema = z.object({
       .number({ required_error: "ID unit sekolah wajib diisi" })
       .int({ message: "ID unit sekolah harus berupa angka integer" })
       .positive({ message: "ID unit sekolah harus positif" }),
+    developmentFee: z.number().int().nonnegative().optional().default(0),
+    reRegistrationFee: z.number().int().nonnegative().optional().default(0),
+    equipmentFee: z.number().int().nonnegative().optional().default(0),
+    extracurricularFee: z.number().int().nonnegative().optional().default(0),
+    uniformFee: z.number().int().nonnegative().optional().default(0),
   }),
 });
 
@@ -26,6 +31,11 @@ export const updateSppTariffSchema = z.object({
       .positive({ message: "Nominal harus lebih besar dari 0" }),
     enrollmentYear: z.number().optional(),
     schoolUnitId: z.number().optional(),
+    developmentFee: z.number().int().nonnegative().optional(),
+    reRegistrationFee: z.number().int().nonnegative().optional(),
+    equipmentFee: z.number().int().nonnegative().optional(),
+    extracurricularFee: z.number().int().nonnegative().optional(),
+    uniformFee: z.number().int().nonnegative().optional(),
   }),
 });
 

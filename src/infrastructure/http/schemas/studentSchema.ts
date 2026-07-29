@@ -4,7 +4,8 @@ export const createStudentSchema = z.object({
   body: z.object({
     studentNumber: z
       .string({ required_error: "Nomor induk siswa wajib diisi" })
-      .regex(/^\d{4}$/, { message: "NIS harus berupa 4 digit angka" }),
+      .min(3, { message: "Nomor induk/pendaftaran minimal 3 karakter" })
+      .max(50, { message: "Nomor induk/pendaftaran maksimal 50 karakter" }),
     name: z.string({ required_error: "Nama siswa wajib diisi" }),
     className: z.string({ required_error: "Kelas wajib diisi" }),
     schoolUnitId: z.number({ required_error: "ID unit sekolah wajib diisi" }).int(),

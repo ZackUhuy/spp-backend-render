@@ -30,6 +30,10 @@ enum InvoiceType {
   EKSTRAKURIKULER
   KEGIATAN
   LAINNYA
+  UANG_PENGEMBANGAN
+  DAFTAR_ULANG
+  UANG_PERALATAN
+  SERAGAM
 }
 
 enum InvoiceStatus {
@@ -83,6 +87,11 @@ model SppTariff {
   schoolUnitId   Int @map("school_unit_id")
   enrollmentYear Int @map("enrollment_year") // Tahun angkatan masuk (contoh: 2024, 2025)
   amount         Int // Tarif dasar SPP bulanan dalam Rupiah (Gunakan Int karena IDR tidak memiliki sen)
+  developmentFee    Int @default(0) @map("development_fee")
+  reRegistrationFee Int @default(0) @map("re_registration_fee")
+  equipmentFee      Int @default(0) @map("equipment_fee")
+  extracurricularFee Int @default(0) @map("extracurricular_fee")
+  uniformFee         Int @default(0) @map("uniform_fee")
 
   // Relasi
   // Jika unit sekolah dihapus, otomatis hapus master tarif terkait
@@ -102,6 +111,7 @@ model Student {
   parentId           Int         @map("parent_id")
   enrollmentYear     Int         @map("enrollment_year") // Tahun angkatan masuk
   discountAmount     Int         @default(0) @map("discount_percentage") // Nominal diskon dalam Rupiah (potongan langsung)
+  status             String      @default("ACTIVE") @db.VarChar(20)
 
   // Relasi
   // Restrict mencegah penghapusan unit/parent jika masih ada data siswa aktif yang terikat dengannya

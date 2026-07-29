@@ -3,6 +3,7 @@ import type { IStudentRepository } from "../../domain/repositories/IStudentRepos
 import type { ISppTariffRepository } from "../../domain/repositories/ISppTariffRepository.js";
 import { InvoiceType, InvoiceStatus, CategoryType, PaymentMethod } from "@prisma/client";
 import { BadRequestError, NotFoundError } from "../../domain/errors/AppError.js";
+import prisma from "../../infrastructure/database/prisma.js";
 
 export class ProcessOfflinePaymentUseCase {
   constructor(
@@ -16,73 +17,137 @@ export class ProcessOfflinePaymentUseCase {
     month: number;
     year: number;
     recordedById: number;
+    invoiceType?: InvoiceType | undefined;
+    paymentAmount?: number | undefined;
   }) {
-    const { studentId, month, year, recordedById } = input;
+    const { studentId, month, year, recordedById, invoiceType = InvoiceType.SPP, paymentAmount } = input;
 
     // 1. Validasi Eksistensi Invoice
     const existingInvoice = await this.invoiceRepository.findByUniqueComposite(
       studentId,
       month,
       year,
-      InvoiceType.SPP
+      invoiceType
     );
 
     if (existingInvoice && existingInvoice.status === InvoiceStatus.PAID) {
-      throw new BadRequestError("Gagal: Tagihan SPP siswa untuk bulan dan tahun tersebut sudah lunas");
+      throw new BadRequestError(`Gagal: Tagihan ${invoiceType} siswa untuk bulan dan tahun tersebut sudah lunas`);
     }
 
-    // 2. Kalkulasi & Snapshot Tarif Dasar SPP (Jika Invoice Belum Ada)
+    // 2. Kalkulasi & Snapshot Tarif Dasar (Jika Invoice Belum Ada)
     let invoiceData: any;
-    let amountToPay: number;
     let student: any;
 
+    student = await this.studentRepository.findById(studentId);
+    if (!student) {
+      throw new NotFoundError("Gagal: Siswa tidak ditemukan");
+    }
+
+    const tariff = await this.sppTariffRepository.findByUnitAndYear(
+      student.schoolUnitId,
+      student.enrollmentYear
+    );
+
+    if (!tariff) {
+      throw new NotFoundError("Gagal: Master tarif SPP untuk angkatan siswa ini belum dikonfigurasi");
+    }
+
+    let baseAmount = 0;
+    let discountApplied = 0;
+
+    if (invoiceType === InvoiceType.SPP) {
+      baseAmount = tariff.amount;
+      discountApplied = Math.min(baseAmount, student.discountAmount);
+    } else if (invoiceType === InvoiceType.UANG_PENGEMBANGAN) {
+      baseAmount = tariff.developmentFee;
+    } else if (invoiceType === InvoiceType.DAFTAR_ULANG) {
+      baseAmount = tariff.reRegistrationFee;
+    } else if (invoiceType === InvoiceType.UANG_PERALATAN) {
+      baseAmount = tariff.equipmentFee;
+    } else if (invoiceType === InvoiceType.EKSTRAKURIKULER) {
+      baseAmount = tariff.extracurricularFee;
+    } else if (invoiceType === InvoiceType.SERAGAM) {
+      baseAmount = tariff.uniformFee;
+    }
+
+    const totalInvoiceAmount = baseAmount - discountApplied;
+
+    // Hitung berapa yang sudah dibayar
+    let currentPaid = 0;
+    if (existingInvoice) {
+      const txSum = await prisma.transaction.aggregate({
+        where: { invoiceId: existingInvoice.id, type: "INCOME" as any },
+        _sum: { amount: true },
+      });
+      currentPaid = txSum._sum.amount || 0;
+    }
+
+    const remainingAmount = Math.max(0, (existingInvoice ? existingInvoice.amount : totalInvoiceAmount) - currentPaid);
+
+    // Tentukan nominal transaksi pembayaran tunai ini
+    let paymentTxAmount = paymentAmount !== undefined ? paymentAmount : remainingAmount;
+    if (paymentTxAmount > remainingAmount) {
+      paymentTxAmount = remainingAmount;
+    }
+
+    if (paymentTxAmount <= 0) {
+      throw new BadRequestError("Gagal: Nominal pembayaran tidak boleh nol atau negatif, atau tagihan sudah lunas");
+    }
+
+    // Tentukan status akhir invoice setelah pembayaran ini
+    const totalPaidAfterTx = currentPaid + paymentTxAmount;
+    const finalInvoiceAmount = existingInvoice ? existingInvoice.amount : totalInvoiceAmount;
+    const finalStatus = totalPaidAfterTx >= finalInvoiceAmount ? InvoiceStatus.PAID : InvoiceStatus.PENDING;
+
     if (!existingInvoice) {
-      student = await this.studentRepository.findById(studentId);
-      if (!student) {
-        throw new NotFoundError("Gagal: Siswa tidak ditemukan");
-      }
-
-      const tariff = await this.sppTariffRepository.findByUnitAndYear(
-        student.schoolUnitId,
-        student.enrollmentYear
-      );
-
-      if (!tariff) {
-        throw new NotFoundError("Gagal: Master tarif SPP untuk angkatan siswa ini belum dikonfigurasi");
-      }
-
-      const baseAmount = tariff.amount;
-      const discountApplied = Math.min(baseAmount, student.discountAmount);
-      amountToPay = baseAmount - discountApplied;
-
       invoiceData = {
         studentId,
-        invoiceType: InvoiceType.SPP,
+        invoiceType,
         month,
         year,
         baseAmount,
         discountApplied,
-        amount: amountToPay,
-        status: InvoiceStatus.PAID,
+        amount: totalInvoiceAmount,
+        status: finalStatus,
       };
     } else {
-      amountToPay = existingInvoice.amount;
-      // We still need student info for transaction description and schoolUnitId
-      student = await this.studentRepository.findById(studentId);
       invoiceData = {
         ...existingInvoice,
-        status: InvoiceStatus.PAID,
+        status: finalStatus,
       };
     }
 
-    // 3. Eksekusi Atomik Database Transaction
-    // Sesuai spesifikasi: categoryId untuk SPP (Gunakan ID kategori SPP dari master seeder yaitu 1)
+    // 3. Eksekusi Kategori Pembayaran Dinamis
+    let categoryName = "SPP";
+    if (invoiceType === InvoiceType.UANG_PENGEMBANGAN) categoryName = "Uang Pengembangan";
+    else if (invoiceType === InvoiceType.DAFTAR_ULANG) categoryName = "Daftar Ulang";
+    else if (invoiceType === InvoiceType.UANG_PERALATAN) categoryName = "Uang Peralatan";
+    else if (invoiceType === InvoiceType.EKSTRAKURIKULER) categoryName = "Uang Ekstrakurikuler";
+    else if (invoiceType === InvoiceType.SERAGAM) categoryName = "Uang Seragam";
+
+    let category = await prisma.category.findFirst({
+      where: {
+        name: { equals: categoryName, mode: "insensitive" },
+        type: "INCOME",
+      },
+    });
+
+    if (!category) {
+      category = await prisma.category.create({
+        data: {
+          name: categoryName,
+          type: "INCOME",
+          schoolUnitId: null,
+        },
+      });
+    }
+
     const transactionData = {
       type: CategoryType.INCOME,
-      categoryId: 1, // ID Kategori SPP
+      categoryId: category.id,
       paymentMethod: PaymentMethod.CASH,
-      amount: amountToPay,
-      description: `Pembayaran SPP offline tunai bulan ${month} tahun ${year} untuk siswa ${student.name}`,
+      amount: paymentTxAmount,
+      description: `Pembayaran ${categoryName} offline tunai bulan ${month} tahun ${year} untuk siswa ${student.name}`,
       schoolUnitId: student.schoolUnitId,
       recordedById,
     };

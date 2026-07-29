@@ -9,6 +9,8 @@ export class GetStudentsUseCase {
     search?: string;
     className?: string;
     discount?: string;
+    status?: string;
+    excludePpdb?: boolean;
   }): Promise<
     (Student & { parent: { name: string; email: string; phoneNumber: string | null } })[]
   > {

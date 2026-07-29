@@ -15,6 +15,8 @@ export interface IStudentRepository {
     search?: string;
     className?: string;
     discount?: string;
+    status?: string;
+    excludePpdb?: boolean;
   }): Promise<
     (Student & { parent: { name: string; email: string; phoneNumber: string | null } })[]
   >;
@@ -32,6 +34,7 @@ export interface IStudentRepository {
       parentName?: string;
       parentEmail?: string | null;
       parentPhoneNumber?: string;
+      status?: string;
     }
   ): Promise<Student>;
   delete(id: number): Promise<void>;
