@@ -13,7 +13,7 @@ export class InvoiceController {
   async payOffline(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = req.user!;
-      const { studentNumber, month, year } = req.body;
+      const { studentNumber, month, year, invoiceType, paymentAmount } = req.body;
 
       const student = await this.studentRepository.findByStudentNumber(studentNumber);
       if (!student) {
@@ -39,6 +39,8 @@ export class InvoiceController {
         month: Number(month),
         year: Number(year),
         recordedById: user.id,
+        invoiceType: invoiceType as any,
+        paymentAmount: paymentAmount !== undefined ? Number(paymentAmount) : undefined,
       });
 
       res.status(200).json({
@@ -85,6 +87,11 @@ export class InvoiceController {
         if (req.query.className) {
           where.className = (req.query.className as string).trim();
         }
+      }
+
+      where.status = "ACTIVE";
+      if (!req.query.className) {
+        where.className = { not: "PPDB" };
       }
 
       const students = await prisma.student.findMany({
@@ -441,6 +448,78 @@ export class InvoiceController {
         return;
       }
 
+      // === LOGIKA PPDB (SISWA BARU / DAFTAR ULANG) ===
+      if (student.className.toUpperCase() === "PPDB") {
+        const dbInvoices = await prisma.invoice.findMany({
+          where: {
+            studentId: student.id,
+            invoiceType: {
+              in: ["UANG_PENGEMBANGAN", "DAFTAR_ULANG", "UANG_PERALATAN", "SPP", "EKSTRAKURIKULER", "SERAGAM"] as any
+            }
+          },
+          include: {
+            transactions: {
+              where: { type: "INCOME" as any }
+            }
+          }
+        });
+
+        const baseSppAmount = tariff.amount;
+        const sppDiscountApplied = Math.min(baseSppAmount, student.discountAmount);
+        const sppNetAmount = baseSppAmount - sppDiscountApplied;
+
+        const isSd = student.schoolUnit.name.toUpperCase() === "SD" || student.schoolUnitId === 3;
+
+        const feeTypes = isSd
+          ? [
+              { type: "DAFTAR_ULANG", base: tariff.reRegistrationFee, net: tariff.reRegistrationFee, month: 7 },
+              { type: "UANG_PENGEMBANGAN", base: tariff.developmentFee, net: tariff.developmentFee, month: 7 },
+              { type: "SPP", base: baseSppAmount, net: sppNetAmount, month: 7 }
+            ]
+          : [
+              { type: "DAFTAR_ULANG", base: tariff.reRegistrationFee, net: tariff.reRegistrationFee, month: 7 },
+              { type: "UANG_PENGEMBANGAN", base: tariff.developmentFee, net: tariff.developmentFee, month: 7 },
+              { type: "SPP", base: baseSppAmount, net: sppNetAmount, month: 7 },
+              { type: "UANG_PERALATAN", base: tariff.equipmentFee, net: tariff.equipmentFee, month: 7 },
+              { type: "EKSTRAKURIKULER", base: tariff.extracurricularFee, net: tariff.extracurricularFee, month: 7 },
+              { type: "SERAGAM", base: tariff.uniformFee, net: tariff.uniformFee, month: 7 }
+            ];
+
+        const invoices = feeTypes.map((fee) => {
+          const existing = dbInvoices.find((inv) => inv.invoiceType === fee.type && inv.month === fee.month);
+          if (existing) {
+            if (existing.status === "PENDING") {
+              existing.baseAmount = fee.base;
+              existing.discountApplied = fee.base - fee.net;
+              existing.amount = fee.net;
+            }
+            return existing;
+          }
+          return {
+            id: null,
+            studentId: student.id,
+            invoiceType: fee.type,
+            month: fee.month,
+            year: student.enrollmentYear,
+            baseAmount: fee.base,
+            discountApplied: fee.base - fee.net,
+            amount: fee.net,
+            status: "PENDING",
+            midtransOrderId: null,
+          };
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Daftar invoice PPDB siswa berhasil diambil",
+          data: invoices,
+          allInvoices: dbInvoices,
+          student,
+        });
+        return;
+      }
+
+      // === LOGIKA SPP BULANAN (SISWA AKTIF) ===
       const baseAmount = tariff.amount;
       const discountApplied = Math.min(baseAmount, student.discountAmount);
       const netAmount = baseAmount - discountApplied;
@@ -509,7 +588,7 @@ export class InvoiceController {
   async payOnlineSimulated(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const user = req.user!;
-      const { studentNumber, month, year } = req.body;
+      const { studentNumber } = req.body;
 
       const student = await prisma.student.findUnique({
         where: { studentNumber },
@@ -547,31 +626,33 @@ export class InvoiceController {
         }
       }
 
-      if (Number(year) < student.enrollmentYear || (Number(year) === student.enrollmentYear && Number(month) < 7)) {
-        res.status(400).json({
-          success: false,
-          message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
-        });
-        return;
+      let invoiceItems: Array<{ month: number; year: number; invoiceType: string }> = [];
+      if (Array.isArray(req.body.invoices)) {
+        invoiceItems = req.body.invoices;
+      } else {
+        const { month, year, invoiceType = "SPP" } = req.body;
+        if (!month || !year) {
+          res.status(400).json({ success: false, message: "Parameter tidak lengkap" });
+          return;
+        }
+        invoiceItems = [{
+          month: Number(month),
+          year: Number(year),
+          invoiceType: invoiceType
+        }];
       }
 
-      const existingInvoice = await prisma.invoice.findUnique({
-        where: {
-          uq_student_billing_period: {
-            studentId: student.id,
-            month: Number(month),
-            year: Number(year),
-            invoiceType: "SPP" as any,
-          },
-        },
-      });
-
-      if (existingInvoice && (existingInvoice.status as any) === "PAID") {
-        res.status(400).json({
-          success: false,
-          message: "Gagal: Tagihan SPP siswa untuk bulan dan tahun tersebut sudah lunas",
-        });
-        return;
+      // Check enrollment periods for SPP type
+      for (const item of invoiceItems) {
+        if (item.invoiceType === "SPP") {
+          if (Number(item.year) < student.enrollmentYear || (Number(item.year) === student.enrollmentYear && Number(item.month) < 7)) {
+            res.status(400).json({
+              success: false,
+              message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
+            });
+            return;
+          }
+        }
       }
 
       const tariff = await prisma.sppTariff.findUnique({
@@ -591,81 +672,148 @@ export class InvoiceController {
         return;
       }
 
-      const baseAmount = tariff.amount;
-      const discountApplied = Math.min(baseAmount, student.discountAmount);
-      const amountToPay = baseAmount - discountApplied;
+      let totalAmountToPay = 0;
+      const verifiedInvoices: any[] = [];
 
-      const mockOrderId = `MOCK-MIDTRANS-${Date.now()}`;
+      for (const item of invoiceItems) {
+        const { month: itemMonth, year: itemYear, invoiceType: itemType } = item;
+
+        const existingInvoice = await prisma.invoice.findUnique({
+          where: {
+            uq_student_billing_period: {
+              studentId: student.id,
+              month: Number(itemMonth),
+              year: Number(itemYear),
+              invoiceType: itemType as any,
+            },
+          },
+        });
+
+        if (existingInvoice && (existingInvoice.status as any) === "PAID") {
+          res.status(400).json({
+            success: false,
+            message: `Gagal: Tagihan ${itemType} siswa untuk periode tersebut sudah lunas`,
+          });
+          return;
+        }
+
+        let baseAmount = 0;
+        let discountApplied = 0;
+        if (itemType === "SPP") {
+          baseAmount = tariff.amount;
+          discountApplied = Math.min(baseAmount, student.discountAmount);
+        } else if (itemType === "UANG_PENGEMBANGAN") {
+          baseAmount = tariff.developmentFee;
+        } else if (itemType === "DAFTAR_ULANG") {
+          baseAmount = tariff.reRegistrationFee;
+        } else if (itemType === "UANG_PERALATAN") {
+          baseAmount = tariff.equipmentFee;
+        } else if (itemType === "EKSTRAKURIKULER") {
+          baseAmount = tariff.extracurricularFee;
+        } else if (itemType === "SERAGAM") {
+          baseAmount = tariff.uniformFee;
+        }
+
+        const amountToPay = baseAmount - discountApplied;
+        totalAmountToPay += amountToPay;
+
+        verifiedInvoices.push({
+          month: Number(itemMonth),
+          year: Number(itemYear),
+          invoiceType: itemType,
+          baseAmount,
+          discountApplied,
+          amountToPay,
+          existingInvoice
+        });
+      }
+
+      const mockOrderId = `BATCH-MOCK-${Date.now()}`;
 
       const result = await prisma.$transaction(async (tx) => {
-        let invoice;
-        if (existingInvoice) {
-          invoice = await tx.invoice.update({
-            where: { id: existingInvoice.id },
-            data: {
-              status: "PAID" as any,
-              midtransOrderId: existingInvoice.midtransOrderId || mockOrderId,
-            },
-          });
-        } else {
-          invoice = await tx.invoice.create({
-            data: {
-              studentId: student.id,
-              invoiceType: "SPP" as any,
-              month: Number(month),
-              year: Number(year),
-              baseAmount,
-              discountApplied,
-              amount: amountToPay,
-              status: "PAID" as any,
-              midtransOrderId: mockOrderId,
-            },
-          });
-        }
+        const processedInvoices = [];
+        const processedTransactions = [];
 
-        let category = await tx.category.findFirst({
-          where: {
-            name: { equals: "SPP", mode: "insensitive" },
-            type: "INCOME",
-          },
-        });
-        if (!category) {
-          category = await tx.category.create({
-            data: {
-              name: "SPP",
+        for (let i = 0; i < verifiedInvoices.length; i++) {
+          const item = verifiedInvoices[i];
+          const uniqueOrderId = `${mockOrderId}-${i}`;
+
+          let invoice;
+          if (item.existingInvoice) {
+            invoice = await tx.invoice.update({
+              where: { id: item.existingInvoice.id },
+              data: {
+                status: "PAID" as any,
+                midtransOrderId: item.existingInvoice.midtransOrderId || uniqueOrderId,
+              },
+            });
+          } else {
+            invoice = await tx.invoice.create({
+              data: {
+                studentId: student.id,
+                invoiceType: item.invoiceType as any,
+                month: item.month,
+                year: item.year,
+                baseAmount: item.baseAmount,
+                discountApplied: item.discountApplied,
+                amount: item.amountToPay,
+                status: "PAID" as any,
+                midtransOrderId: uniqueOrderId,
+              },
+            });
+          }
+
+          let categoryName = "SPP";
+          if (item.invoiceType === "UANG_PENGEMBANGAN") categoryName = "Uang Pengembangan";
+          else if (item.invoiceType === "DAFTAR_ULANG") categoryName = "Daftar Ulang";
+          else if (item.invoiceType === "UANG_PERALATAN") categoryName = "Uang Peralatan";
+          else if (item.invoiceType === "EKSTRAKURIKULER") categoryName = "Uang Ekstrakurikuler";
+          else if (item.invoiceType === "SERAGAM") categoryName = "Uang Seragam";
+
+          let category = await tx.category.findFirst({
+            where: {
+              name: { equals: categoryName, mode: "insensitive" },
               type: "INCOME",
-              schoolUnitId: null,
             },
           });
+          if (!category) {
+            category = await tx.category.create({
+              data: {
+                name: categoryName,
+                type: "INCOME",
+                schoolUnitId: null,
+              },
+            });
+          }
+
+          const transaction = await tx.transaction.create({
+            data: {
+              type: "INCOME" as any,
+              categoryId: category.id,
+              paymentMethod: "MIDTRANS" as any,
+              amount: item.amountToPay,
+              description: `Pembayaran ${categoryName} online (simulasi Midtrans) untuk siswa ${student.name}`,
+              schoolUnitId: student.schoolUnitId,
+              recordedById: null,
+              invoiceId: invoice.id,
+            },
+          });
+
+          processedInvoices.push(invoice);
+          processedTransactions.push(transaction);
         }
 
-        const transaction = await tx.transaction.create({
-          data: {
-            type: "INCOME" as any,
-            categoryId: category.id,
-            paymentMethod: "MIDTRANS" as any,
-            amount: amountToPay,
-            description: `Pembayaran SPP online (simulasi Midtrans) bulan ${month} tahun ${year} untuk siswa ${student.name}`,
-            schoolUnitId: student.schoolUnitId,
-            recordedById: null,
-            invoiceId: invoice.id,
-          },
-        });
-
-        return { invoice, transaction };
+        return { invoices: processedInvoices, transactions: processedTransactions };
       });
 
       res.status(200).json({
         success: true,
-        message: "Simulasi pembayaran online SPP (Midtrans) berhasil diproses",
+        message: "Simulasi pembayaran online berhasil diproses",
         data: {
-          invoiceId: result.invoice.id,
-          studentId: result.invoice.studentId,
-          month: result.invoice.month,
-          year: result.invoice.year,
-          amountPaid: result.transaction.amount,
-          transactionId: result.transaction.id,
-          midtransOrderId: result.invoice.midtransOrderId,
+          invoiceId: result.invoices[0]?.id || null,
+          studentId: student.id,
+          amountPaid: totalAmountToPay,
+          midtransOrderId: mockOrderId,
         },
       });
     } catch (error: any) {
@@ -675,9 +823,9 @@ export class InvoiceController {
 
   async createPakasirTransaction(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { studentNumber, month, year, paymentMethod } = req.body;
+      const { studentNumber, paymentMethod } = req.body;
 
-      if (!studentNumber || !month || !year || !paymentMethod) {
+      if (!studentNumber || !paymentMethod) {
         res.status(400).json({ success: false, message: "Parameter tidak lengkap" });
         return;
       }
@@ -691,32 +839,33 @@ export class InvoiceController {
         return;
       }
 
-      if (Number(year) < student.enrollmentYear || (Number(year) === student.enrollmentYear && Number(month) < 7)) {
-        res.status(400).json({
-          success: false,
-          message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
-        });
-        return;
+      let invoiceItems: Array<{ month: number; year: number; invoiceType: string }> = [];
+      if (Array.isArray(req.body.invoices)) {
+        invoiceItems = req.body.invoices;
+      } else {
+        const { month, year, invoiceType = "SPP" } = req.body;
+        if (!month || !year) {
+          res.status(400).json({ success: false, message: "Parameter tidak lengkap" });
+          return;
+        }
+        invoiceItems = [{
+          month: Number(month),
+          year: Number(year),
+          invoiceType: invoiceType
+        }];
       }
 
-      // Check if already paid
-      const existingInvoice = await prisma.invoice.findUnique({
-        where: {
-          uq_student_billing_period: {
-            studentId: student.id,
-            month: Number(month),
-            year: Number(year),
-            invoiceType: "SPP" as any,
-          },
-        },
-      });
-
-      if (existingInvoice && (existingInvoice.status as any) === "PAID") {
-        res.status(400).json({
-          success: false,
-          message: "Gagal: Tagihan SPP siswa untuk bulan dan tahun tersebut sudah lunas",
-        });
-        return;
+      // Check enrollment periods for SPP type
+      for (const item of invoiceItems) {
+        if (item.invoiceType === "SPP") {
+          if (Number(item.year) < student.enrollmentYear || (Number(item.year) === student.enrollmentYear && Number(item.month) < 7)) {
+            res.status(400).json({
+              success: false,
+              message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
+            });
+            return;
+          }
+        }
       }
 
       const tariff = await prisma.sppTariff.findUnique({
@@ -736,23 +885,73 @@ export class InvoiceController {
         return;
       }
 
-      const rawBaseAmount = tariff ? Number(tariff.amount) : 0;
-      const baseAmount = isNaN(rawBaseAmount) || rawBaseAmount <= 0 ? 185000 : rawBaseAmount;
+      let totalAmountToPay = 0;
+      const verifiedInvoices: any[] = [];
 
-      const rawDiscount = student ? Number(student.discountAmount) : 0;
-      const discountVal = isNaN(rawDiscount) ? 0 : rawDiscount;
+      for (const item of invoiceItems) {
+        const { month: itemMonth, year: itemYear, invoiceType: itemType } = item;
 
-      const discountApplied = Math.min(baseAmount, discountVal);
-      const calculatedAmount = baseAmount - discountApplied;
-      const amountToPay = isNaN(calculatedAmount) || calculatedAmount <= 0 
-        ? 1000 
-        : Math.round(calculatedAmount);
+        const existingInvoice = await prisma.invoice.findUnique({
+          where: {
+            uq_student_billing_period: {
+              studentId: student.id,
+              month: Number(itemMonth),
+              year: Number(itemYear),
+              invoiceType: itemType as any,
+            },
+          },
+        });
+
+        if (existingInvoice && (existingInvoice.status as any) === "PAID") {
+          res.status(400).json({
+            success: false,
+            message: `Gagal: Tagihan ${itemType} siswa untuk periode tersebut sudah lunas`,
+          });
+          return;
+        }
+
+        let baseAmount = 0;
+        let discountVal = 0;
+        if (itemType === "SPP") {
+          const rawBaseAmount = tariff ? Number(tariff.amount) : 0;
+          baseAmount = isNaN(rawBaseAmount) || rawBaseAmount <= 0 ? 185000 : rawBaseAmount;
+          const rawDiscount = student ? Number(student.discountAmount) : 0;
+          discountVal = isNaN(rawDiscount) ? 0 : rawDiscount;
+        } else if (itemType === "UANG_PENGEMBANGAN") {
+          baseAmount = tariff ? Number(tariff.developmentFee) : 0;
+        } else if (itemType === "DAFTAR_ULANG") {
+          baseAmount = tariff ? Number(tariff.reRegistrationFee) : 0;
+        } else if (itemType === "UANG_PERALATAN") {
+          baseAmount = tariff ? Number(tariff.equipmentFee) : 0;
+        } else if (itemType === "EKSTRAKURIKULER") {
+          baseAmount = tariff ? Number(tariff.extracurricularFee) : 0;
+        } else if (itemType === "SERAGAM") {
+          baseAmount = tariff ? Number(tariff.uniformFee) : 0;
+        }
+
+        const discountApplied = Math.min(baseAmount, discountVal);
+        const calculatedAmount = baseAmount - discountApplied;
+        const amountToPay = isNaN(calculatedAmount) || calculatedAmount <= 0 
+          ? 1000 
+          : Math.round(calculatedAmount);
+
+        totalAmountToPay += amountToPay;
+        verifiedInvoices.push({
+          month: Number(itemMonth),
+          year: Number(itemYear),
+          invoiceType: itemType,
+          baseAmount,
+          discountApplied,
+          amountToPay,
+          existingInvoice
+        });
+      }
 
       const projectSlug = process.env.PAKASIR_PROJECT_SLUG || "depodomain";
       const apiKey = process.env.PAKASIR_API_KEY || "xxx123";
 
-      // Order ID format: SPP-{studentNumber}-{month}-{year}-{timestamp}
-      const orderId = `SPP-${student.studentNumber}-${month}-${year}-${Date.now()}`;
+      // Order ID prefix: BATCH-{studentNumber}-{timestamp}
+      const orderId = `BATCH-${student.studentNumber}-${Date.now()}`;
 
       // Map payment method to valid Pakasir method slugs
       let mappedMethod = paymentMethod.toLowerCase();
@@ -765,7 +964,7 @@ export class InvoiceController {
       const pakasirPayload = {
         project: projectSlug,
         order_id: String(orderId),
-        amount: Number(amountToPay),
+        amount: Number(totalAmountToPay),
         api_key: apiKey,
       };
 
@@ -789,16 +988,16 @@ export class InvoiceController {
         console.error("Gagal menghubungi API Pakasir:", err);
       }
 
-      // Fallback to mock Pakasir response if API call fails (useful for local development without credentials)
+      // Fallback to mock Pakasir response if API call fails
       if (!pakasirData || !pakasirData.payment) {
         console.warn("Menggunakan response tiruan (mock) Pakasir untuk pengujian local.");
         pakasirData = {
           payment: {
             project: projectSlug,
             order_id: orderId,
-            amount: amountToPay,
+            amount: totalAmountToPay,
             fee: 1000,
-            total_payment: amountToPay + 1000,
+            total_payment: totalAmountToPay + 1000,
             payment_method: paymentMethod,
             payment_number: paymentMethod === "qris" 
               ? "00020101021226610016ID.CO.SHOPEE.WWW01189360091800216005230208216005230303UME51440014ID.CO.QRIS.WWW0215ID10243228429300303UME5204792953033605409100003.005802ID5907Pakasir6012KAB. KEBUMEN61055439262230519SP25RZRATEQI2HQ65Q46304A079"
@@ -808,32 +1007,37 @@ export class InvoiceController {
         };
       }
 
-      // Save or update invoice in DB with status PENDING and store order_id
+      // Save or update invoices in DB with status PENDING and store unique order_ids
       await prisma.$transaction(async (tx) => {
-        if (existingInvoice) {
-          await tx.invoice.update({
-            where: { id: existingInvoice.id },
-            data: {
-              midtransOrderId: orderId,
-              baseAmount,
-              discountApplied,
-              amount: amountToPay,
-            },
-          });
-        } else {
-          await tx.invoice.create({
-            data: {
-              studentId: student.id,
-              invoiceType: "SPP" as any,
-              month: Number(month),
-              year: Number(year),
-              baseAmount,
-              discountApplied,
-              amount: amountToPay,
-              status: "PENDING" as any,
-              midtransOrderId: orderId,
-            },
-          });
+        for (let i = 0; i < verifiedInvoices.length; i++) {
+          const item = verifiedInvoices[i];
+          const uniqueOrderId = `${orderId}-${i}`;
+
+          if (item.existingInvoice) {
+            await tx.invoice.update({
+              where: { id: item.existingInvoice.id },
+              data: {
+                midtransOrderId: uniqueOrderId,
+                baseAmount: item.baseAmount,
+                discountApplied: item.discountApplied,
+                amount: item.amountToPay,
+              },
+            });
+          } else {
+            await tx.invoice.create({
+              data: {
+                studentId: student.id,
+                invoiceType: item.invoiceType as any,
+                month: item.month,
+                year: item.year,
+                baseAmount: item.baseAmount,
+                discountApplied: item.discountApplied,
+                amount: item.amountToPay,
+                status: "PENDING" as any,
+                midtransOrderId: uniqueOrderId,
+              },
+            });
+          }
         }
       });
 
@@ -842,7 +1046,7 @@ export class InvoiceController {
         message: "Transaksi Pakasir berhasil dibuat",
         data: {
           orderId,
-          amount: amountToPay,
+          amount: totalAmountToPay,
           payment: pakasirData.payment,
         },
       });
@@ -860,17 +1064,26 @@ export class InvoiceController {
         return;
       }
 
-      const invoice = await prisma.invoice.findUnique({
-        where: { midtransOrderId: order_id as string },
-        include: { student: true },
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          midtransOrderId: {
+            startsWith: order_id as string,
+          },
+        },
+        include: {
+          student: {
+            select: { name: true, schoolUnitId: true },
+          },
+        },
       });
 
-      if (!invoice) {
+      if (invoices.length === 0) {
         res.status(404).json({ success: false, message: "Tagihan tidak ditemukan" });
         return;
       }
 
-      if ((invoice.status as any) === "PAID") {
+      const allPaid = invoices.every((inv) => (inv.status as any) === "PAID");
+      if (allPaid) {
         res.status(200).json({
           success: true,
           status: "completed",
@@ -881,9 +1094,12 @@ export class InvoiceController {
 
       const projectSlug = process.env.PAKASIR_PROJECT_SLUG || "depodomain";
       const apiKey = process.env.PAKASIR_API_KEY || "xxx123";
-      const amountVal = amount || invoice.amount;
+      
+      const totalAmount = amount 
+        ? Number(amount) 
+        : invoices.reduce((sum, inv) => sum + inv.amount, 0);
 
-      const detailUrl = `https://app.pakasir.com/api/transactiondetail?project=${projectSlug}&amount=${amountVal}&order_id=${order_id}&api_key=${apiKey}`;
+      const detailUrl = `https://app.pakasir.com/api/transactiondetail?project=${projectSlug}&amount=${totalAmount}&order_id=${order_id}&api_key=${apiKey}`;
 
       let transactionStatus = "pending";
       
@@ -901,48 +1117,57 @@ export class InvoiceController {
 
       if (transactionStatus === "completed") {
         await prisma.$transaction(async (tx) => {
-          await tx.invoice.update({
-            where: { id: invoice.id },
-            data: {
-              status: "PAID" as any,
-              amount: Number(amountVal),
-              discountApplied: invoice.baseAmount - Number(amountVal),
-            },
-          });
+          for (const invoice of invoices) {
+            if ((invoice.status as any) === "PAID") continue;
 
-          const existingTx = await tx.transaction.findFirst({
-            where: { invoiceId: invoice.id, type: "INCOME" as any },
-          });
-
-          if (!existingTx) {
-            let category = await tx.category.findFirst({
-              where: {
-                name: { equals: "SPP", mode: "insensitive" },
-                type: "INCOME",
+            await tx.invoice.update({
+              where: { id: invoice.id },
+              data: {
+                status: "PAID" as any,
               },
             });
-            if (!category) {
-              category = await tx.category.create({
-                data: {
-                  name: "SPP",
+
+            const existingTx = await tx.transaction.findFirst({
+              where: { invoiceId: invoice.id, type: "INCOME" as any },
+            });
+
+            if (!existingTx) {
+              let categoryName = "SPP";
+              if (invoice.invoiceType === "UANG_PENGEMBANGAN") categoryName = "Uang Pengembangan";
+              else if (invoice.invoiceType === "DAFTAR_ULANG") categoryName = "Daftar Ulang";
+              else if (invoice.invoiceType === "UANG_PERALATAN") categoryName = "Uang Peralatan";
+              else if (invoice.invoiceType === "EKSTRAKURIKULER") categoryName = "Uang Ekstrakurikuler";
+              else if (invoice.invoiceType === "SERAGAM") categoryName = "Uang Seragam";
+
+              let category = await tx.category.findFirst({
+                where: {
+                  name: { equals: categoryName, mode: "insensitive" },
                   type: "INCOME",
-                  schoolUnitId: null,
+                },
+              });
+              if (!category) {
+                category = await tx.category.create({
+                  data: {
+                    name: categoryName,
+                    type: "INCOME",
+                    schoolUnitId: null,
+                  },
+                });
+              }
+
+              await tx.transaction.create({
+                data: {
+                  type: "INCOME" as any,
+                  categoryId: category.id,
+                  paymentMethod: "MIDTRANS" as any,
+                  amount: invoice.amount,
+                  description: `Pembayaran ${categoryName} online (Pakasir) bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
+                  schoolUnitId: invoice.student.schoolUnitId,
+                  recordedById: null,
+                  invoiceId: invoice.id,
                 },
               });
             }
-
-            await tx.transaction.create({
-              data: {
-                type: "INCOME" as any,
-                categoryId: category.id,
-                paymentMethod: "MIDTRANS" as any,
-                amount: invoice.amount,
-                description: `Pembayaran SPP online (Pakasir) bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
-                schoolUnitId: invoice.student.schoolUnitId,
-                recordedById: null,
-                invoiceId: invoice.id,
-              },
-            });
           }
         });
 
@@ -980,60 +1205,73 @@ export class InvoiceController {
         return;
       }
 
-      const invoice = await prisma.invoice.findUnique({
-        where: { midtransOrderId: order_id },
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          midtransOrderId: {
+            startsWith: order_id,
+          },
+        },
         include: { student: true },
       });
 
-      if (!invoice) {
+      if (invoices.length === 0) {
         res.status(404).json({ success: false, message: "Tagihan tidak ditemukan" });
         return;
       }
 
-      if ((invoice.status as any) === "PAID") {
+      const allPaid = invoices.every((inv) => (inv.status as any) === "PAID");
+      if (allPaid) {
         res.status(200).json({ success: true, message: "Tagihan sudah lunas" });
         return;
       }
 
       await prisma.$transaction(async (tx) => {
-        const actualAmount = Number(amount) || invoice.amount;
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: {
-            status: "PAID" as any,
-            amount: actualAmount,
-            discountApplied: invoice.baseAmount - actualAmount,
-          },
-        });
+        for (const invoice of invoices) {
+          if ((invoice.status as any) === "PAID") continue;
 
-        let category = await tx.category.findFirst({
-          where: {
-            name: { equals: "SPP", mode: "insensitive" },
-            type: "INCOME",
-          },
-        });
-        if (!category) {
-          category = await tx.category.create({
+          await tx.invoice.update({
+            where: { id: invoice.id },
             data: {
-              name: "SPP",
+              status: "PAID" as any,
+            },
+          });
+
+          let categoryName = "SPP";
+          if (invoice.invoiceType === "UANG_PENGEMBANGAN") categoryName = "Uang Pengembangan";
+          else if (invoice.invoiceType === "DAFTAR_ULANG") categoryName = "Daftar Ulang";
+          else if (invoice.invoiceType === "UANG_PERALATAN") categoryName = "Uang Peralatan";
+          else if (invoice.invoiceType === "EKSTRAKURIKULER") categoryName = "Uang Ekstrakurikuler";
+          else if (invoice.invoiceType === "SERAGAM") categoryName = "Uang Seragam";
+
+          let category = await tx.category.findFirst({
+            where: {
+              name: { equals: categoryName, mode: "insensitive" },
               type: "INCOME",
-              schoolUnitId: null,
+            },
+          });
+          if (!category) {
+            category = await tx.category.create({
+              data: {
+                name: categoryName,
+                type: "INCOME",
+                schoolUnitId: null,
+              },
+            });
+          }
+
+          await tx.transaction.create({
+            data: {
+              type: "INCOME" as any,
+              categoryId: category.id,
+              paymentMethod: "MIDTRANS" as any,
+              amount: invoice.amount,
+              description: `Pembayaran ${categoryName} online (Pakasir Webhook) bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
+              schoolUnitId: invoice.student.schoolUnitId,
+              recordedById: null,
+              invoiceId: invoice.id,
             },
           });
         }
-
-        await tx.transaction.create({
-          data: {
-            type: "INCOME" as any,
-            categoryId: category.id,
-            paymentMethod: "MIDTRANS" as any,
-            amount: Number(amount) || invoice.amount,
-            description: `Pembayaran SPP online (Pakasir Webhook) bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
-            schoolUnitId: invoice.student.schoolUnitId,
-            recordedById: null,
-            invoiceId: invoice.id,
-          },
-        });
       });
 
       res.status(200).json({ success: true, message: "Webhook berhasil diproses" });

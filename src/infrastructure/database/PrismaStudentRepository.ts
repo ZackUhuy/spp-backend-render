@@ -44,6 +44,7 @@ export class PrismaStudentRepository implements IStudentRepository {
           enrollmentYear: studentData.enrollmentYear,
           discountAmount: studentData.discountAmount,
           parentId: finalParentId,
+          status: studentData.status || "ACTIVE",
         },
       });
 
@@ -58,7 +59,8 @@ export class PrismaStudentRepository implements IStudentRepository {
       result.schoolUnitId,
       result.parentId,
       result.enrollmentYear,
-      result.discountAmount
+      result.discountAmount,
+      result.status
     );
   }
 
@@ -67,6 +69,8 @@ export class PrismaStudentRepository implements IStudentRepository {
     search?: string;
     className?: string;
     discount?: string;
+    status?: string;
+    excludePpdb?: boolean;
   }): Promise<
     (Student & { parent: { name: string; email: string; phoneNumber: string | null } })[]
   > {
@@ -86,6 +90,16 @@ export class PrismaStudentRepository implements IStudentRepository {
       } else if (filter.discount === "no") {
         where.discountAmount = 0;
       }
+    }
+
+    if (filter?.status) {
+      where.status = filter.status;
+    } else {
+      where.status = "ACTIVE";
+    }
+
+    if (filter?.excludePpdb) {
+      where.className = { not: "PPDB" };
     }
 
     if (filter?.search) {
@@ -117,7 +131,8 @@ export class PrismaStudentRepository implements IStudentRepository {
         s.schoolUnitId,
         s.parentId,
         s.enrollmentYear,
-        s.discountAmount
+        s.discountAmount,
+        s.status
       );
 
       return Object.assign(student, { parent: s.parent });
@@ -139,7 +154,8 @@ export class PrismaStudentRepository implements IStudentRepository {
       student.schoolUnitId,
       student.parentId,
       student.enrollmentYear,
-      student.discountAmount
+      student.discountAmount,
+      student.status
     );
   }
 
@@ -158,7 +174,8 @@ export class PrismaStudentRepository implements IStudentRepository {
       student.schoolUnitId,
       student.parentId,
       student.enrollmentYear,
-      student.discountAmount
+      student.discountAmount,
+      student.status
     );
   }
 
@@ -174,6 +191,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       parentName?: string;
       parentEmail?: string | null;
       parentPhoneNumber?: string;
+      status?: string;
     }
   ): Promise<Student> {
     const {
@@ -186,6 +204,7 @@ export class PrismaStudentRepository implements IStudentRepository {
       parentName,
       parentEmail,
       parentPhoneNumber,
+      status,
     } = data;
 
     const studentData: any = {};
@@ -193,6 +212,7 @@ export class PrismaStudentRepository implements IStudentRepository {
     if (className !== undefined) studentData.className = className;
     if (enrollmentYear !== undefined) studentData.enrollmentYear = enrollmentYear;
     if (discountAmount !== undefined) studentData.discountAmount = discountAmount;
+    if (status !== undefined) studentData.status = status;
     if (schoolUnitId !== undefined) {
       studentData.schoolUnit = {
         connect: { id: schoolUnitId }
@@ -203,6 +223,15 @@ export class PrismaStudentRepository implements IStudentRepository {
     if (parentName !== undefined) parentUpdateData.name = parentName;
     if (parentEmail !== undefined) parentUpdateData.email = parentEmail;
     if (parentPhoneNumber !== undefined) parentUpdateData.phoneNumber = parentPhoneNumber;
+
+    if (status === "CANCELED") {
+      await this.prisma.invoice.deleteMany({
+        where: {
+          studentId: id,
+          status: "PENDING" as any,
+        },
+      });
+    }
 
     const updated = await this.prisma.student.update({
       where: { id },
@@ -224,7 +253,8 @@ export class PrismaStudentRepository implements IStudentRepository {
       updated.schoolUnitId,
       updated.parentId,
       updated.enrollmentYear,
-      updated.discountAmount
+      updated.discountAmount,
+      updated.status
     );
   }
 

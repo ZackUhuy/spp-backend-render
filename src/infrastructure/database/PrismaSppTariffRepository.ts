@@ -11,6 +11,11 @@ export class PrismaSppTariffRepository implements ISppTariffRepository {
         schoolUnitId: data.schoolUnitId,
         enrollmentYear: data.enrollmentYear,
         amount: data.amount,
+        developmentFee: data.developmentFee,
+        reRegistrationFee: data.reRegistrationFee,
+        equipmentFee: data.equipmentFee,
+        extracurricularFee: data.extracurricularFee,
+        uniformFee: data.uniformFee,
       },
     });
 
@@ -18,7 +23,12 @@ export class PrismaSppTariffRepository implements ISppTariffRepository {
       created.id,
       created.schoolUnitId,
       created.enrollmentYear,
-      created.amount
+      created.amount,
+      created.developmentFee,
+      created.reRegistrationFee,
+      created.equipmentFee,
+      created.extracurricularFee,
+      created.uniformFee
     );
   }
 
@@ -33,7 +43,17 @@ export class PrismaSppTariffRepository implements ISppTariffRepository {
     });
 
     return tariffs.map(
-      (t) => new SppTariff(t.id, t.schoolUnitId, t.enrollmentYear, t.amount)
+      (t) => new SppTariff(
+        t.id,
+        t.schoolUnitId,
+        t.enrollmentYear,
+        t.amount,
+        t.developmentFee,
+        t.reRegistrationFee,
+        t.equipmentFee,
+        t.extracurricularFee,
+        t.uniformFee
+      )
     );
   }
 
@@ -48,7 +68,12 @@ export class PrismaSppTariffRepository implements ISppTariffRepository {
       tariff.id,
       tariff.schoolUnitId,
       tariff.enrollmentYear,
-      tariff.amount
+      tariff.amount,
+      tariff.developmentFee,
+      tariff.reRegistrationFee,
+      tariff.equipmentFee,
+      tariff.extracurricularFee,
+      tariff.uniformFee
     );
   }
 
@@ -71,21 +96,46 @@ export class PrismaSppTariffRepository implements ISppTariffRepository {
       tariff.id,
       tariff.schoolUnitId,
       tariff.enrollmentYear,
-      tariff.amount
+      tariff.amount,
+      tariff.developmentFee,
+      tariff.reRegistrationFee,
+      tariff.equipmentFee,
+      tariff.extracurricularFee,
+      tariff.uniformFee
     );
   }
 
-  async update(id: number, amount: number): Promise<SppTariff> {
+  async update(
+    id: number,
+    amount: number,
+    developmentFee?: number,
+    reRegistrationFee?: number,
+    equipmentFee?: number,
+    extracurricularFee?: number,
+    uniformFee?: number
+  ): Promise<SppTariff> {
+    const dataToUpdate: any = { amount };
+    if (developmentFee !== undefined) dataToUpdate.developmentFee = developmentFee;
+    if (reRegistrationFee !== undefined) dataToUpdate.reRegistrationFee = reRegistrationFee;
+    if (equipmentFee !== undefined) dataToUpdate.equipmentFee = equipmentFee;
+    if (extracurricularFee !== undefined) dataToUpdate.extracurricularFee = extracurricularFee;
+    if (uniformFee !== undefined) dataToUpdate.uniformFee = uniformFee;
+
     const updated = await this.prisma.sppTariff.update({
       where: { id },
-      data: { amount },
+      data: dataToUpdate,
     });
 
     return new SppTariff(
       updated.id,
       updated.schoolUnitId,
       updated.enrollmentYear,
-      updated.amount
+      updated.amount,
+      updated.developmentFee,
+      updated.reRegistrationFee,
+      updated.equipmentFee,
+      updated.extracurricularFee,
+      updated.uniformFee
     );
   }
 

@@ -8,6 +8,14 @@ export interface ISppTariffRepository {
     schoolUnitId: number,
     enrollmentYear: number
   ): Promise<SppTariff | null>;
-  update(id: number, amount: number): Promise<SppTariff>;
+  update(
+    id: number,
+    amount: number,
+    developmentFee?: number,
+    reRegistrationFee?: number,
+    equipmentFee?: number,
+    extracurricularFee?: number,
+    uniformFee?: number
+  ): Promise<SppTariff>;
   delete(id: number): Promise<void>;
 }

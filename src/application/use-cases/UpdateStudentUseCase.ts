@@ -17,6 +17,7 @@ export class UpdateStudentUseCase {
       parentName?: string;
       parentEmail?: string | null;
       parentPhoneNumber?: string;
+      status?: string;
     },
     user: { role: string; schoolUnitId: number | null }
   ): Promise<Student> {

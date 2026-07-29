@@ -44,6 +44,11 @@ export class CreateStudentUseCase {
         schoolUnitId: data.schoolUnitId,
         enrollmentYear: data.enrollmentYear,
         amount: 150000,
+        developmentFee: 0,
+        reRegistrationFee: 0,
+        equipmentFee: 0,
+        extracurricularFee: 0,
+        uniformFee: 0,
       });
     }
 
@@ -79,6 +84,7 @@ export class CreateStudentUseCase {
         enrollmentYear: data.enrollmentYear,
         discountAmount: data.discountAmount,
         parentId: parentId as any,
+        status: "ACTIVE",
       },
       parentDataToCreate
     );

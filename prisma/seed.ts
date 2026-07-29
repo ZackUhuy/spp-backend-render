@@ -136,11 +136,18 @@ async function main() {
         enrollmentYear: 2025,
       },
     },
-    update: {},
+    update: {
+      developmentFee: 1500000,
+      reRegistrationFee: 300000,
+      equipmentFee: 500000,
+    },
     create: {
       schoolUnitId: unitSD.id,
       enrollmentYear: 2025,
       amount: 175000,
+      developmentFee: 1500000,
+      reRegistrationFee: 300000,
+      equipmentFee: 500000,
     },
   });
 
@@ -152,14 +159,107 @@ async function main() {
         enrollmentYear: 2025,
       },
     },
-    update: {},
+    update: {
+      developmentFee: 1000000,
+      reRegistrationFee: 200000,
+      equipmentFee: 400000,
+      extracurricularFee: 250000,
+      uniformFee: 600000,
+    },
     create: {
       schoolUnitId: unitRA.id,
       enrollmentYear: 2025,
       amount: 120000,
+      developmentFee: 1000000,
+      reRegistrationFee: 200000,
+      equipmentFee: 400000,
+      extracurricularFee: 250000,
+      uniformFee: 600000,
     },
   });
   console.log('Tarif dasar SPP berhasil disiapkan.');
+
+  // 6. Seed Calon Siswa Baru PPDB Demo
+  console.log('Seeding data calon siswa baru PPDB...');
+  const parentPPDB = await prisma.user.upsert({
+    where: { email: 'parent.budi@sekolah.sch.id' },
+    update: {},
+    create: {
+      name: 'Wali Murid Budi (Demo PPDB)',
+      email: 'parent.budi@sekolah.sch.id',
+      password: defaultPasswordParent,
+      role: Role.PARENT,
+      phoneNumber: '081234567890',
+    },
+  });
+
+  await prisma.student.upsert({
+    where: { studentNumber: 'PPDB-2026-001' },
+    update: {
+      className: 'PPDB',
+      parentId: parentPPDB.id,
+    },
+    create: {
+      studentNumber: 'PPDB-2026-001',
+      name: 'Budi Calon Siswa Baru',
+      className: 'PPDB',
+      schoolUnitId: unitSD.id,
+      enrollmentYear: 2025,
+      parentId: parentPPDB.id,
+      discountAmount: 0,
+    },
+  });
+  console.log('Calon siswa baru PPDB berhasil disiapkan.');
+
+  // 7. Seed 30 Data Siswa dengan Berbagai Unit dan Kelas untuk Testing
+  console.log('Seeding 30 data siswa tambahan...');
+  const studentNames = [
+    "Ahmad Fauzi", "Siti Aminah", "Muhammad Ridho", "Lani Cahyani", "Budi Santoso",
+    "Dewi Lestari", "Rian Hidayat", "Indah Permata", "Yusuf Pratama", "Fitri Handayani",
+    "Hadi Wijaya", "Rina Rahmawati", "Deni Saputra", "Mega Utami", "Andi Hermawan",
+    "Sri Wahyuni", "Eko Prasetyo", "Ani Maryani", "Agus Setiawan", "Wulan Sari",
+    "Fajar Nugroho", "Sari Indah", "Guntur Wibowo", "Kartika Putri", "Bambang Susilo",
+    "Diana Rahma", "Joko Purwanto", "Novi Anggraini", "Taufik Rahman", "Nila Kartika"
+  ];
+
+  const units = [unitKB, unitRA, unitSD, unitTPA];
+
+  for (let i = 0; i < 30; i++) {
+    const isPPDB = i < 15; // 15 PPDB, 15 Regular
+    const unitIndex = i % 4;
+    const targetUnit = units[unitIndex];
+    const studentNumber = isPPDB ? `PPDB-2026-${100 + i}` : `NIS-2025-${200 + i}`;
+    
+    let className = 'PPDB';
+    if (!isPPDB) {
+      if (targetUnit.id === 1) className = 'KB-A';
+      else if (targetUnit.id === 2) className = 'RA-B';
+      else if (targetUnit.id === 3) className = 'I-A';
+      else if (targetUnit.id === 4) className = 'TPA-Balita';
+    }
+
+    await prisma.student.upsert({
+      where: { studentNumber },
+      update: {
+        name: studentNames[i],
+        className,
+        schoolUnitId: targetUnit.id,
+        enrollmentYear: 2025,
+        parentId: parentPPDB.id,
+        discountAmount: i % 5 === 0 ? 15000 : 0,
+      },
+      create: {
+        studentNumber,
+        name: studentNames[i],
+        className,
+        schoolUnitId: targetUnit.id,
+        enrollmentYear: 2025,
+        parentId: parentPPDB.id,
+        discountAmount: i % 5 === 0 ? 15000 : 0,
+      }
+    });
+  }
+  console.log('30 data siswa tambahan berhasil disiapkan.');
 
   console.log('🔄 Menyinkronkan database sequence auto-increment...');
 

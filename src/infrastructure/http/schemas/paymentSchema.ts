@@ -12,8 +12,9 @@ export const offlinePaymentSchema = z.object({
       .number({ required_error: "Tahun wajib diisi" })
       .int()
       .min(2000, { message: "Tahun tidak valid" }),
-    invoiceType: z.literal("SPP", {
-      required_error: "Tipe invoice wajib diisi ('SPP')",
+    invoiceType: z.enum(["SPP", "UANG_PENGEMBANGAN", "DAFTAR_ULANG", "UANG_PERALATAN", "EKSTRAKURIKULER", "SERAGAM"], {
+      required_error: "Tipe invoice wajib diisi",
     }),
+    paymentAmount: z.number().min(0).optional(),
   }),
 });

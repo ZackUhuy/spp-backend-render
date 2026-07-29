@@ -7,6 +7,7 @@ export class Student {
     public readonly schoolUnitId: number,
     public readonly parentId: number,
     public readonly enrollmentYear: number,
-    public readonly discountAmount: number
+    public readonly discountAmount: number,
+    public readonly status: string = "ACTIVE"
   ) {}
 }

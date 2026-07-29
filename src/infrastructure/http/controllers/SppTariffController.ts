@@ -14,11 +14,16 @@ export class SppTariffController {
 
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { schoolUnitId, enrollmentYear, amount } = req.body;
+      const { schoolUnitId, enrollmentYear, amount, developmentFee, reRegistrationFee, equipmentFee, extracurricularFee, uniformFee } = req.body;
       const result = await this.createSppTariffUseCase.execute({
         schoolUnitId,
         enrollmentYear,
         amount,
+        developmentFee,
+        reRegistrationFee,
+        equipmentFee,
+        extracurricularFee,
+        uniformFee,
       });
 
       res.status(201).json({
@@ -52,10 +57,15 @@ export class SppTariffController {
   async update(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { amount } = req.body;
+      const { amount, developmentFee, reRegistrationFee, equipmentFee, extracurricularFee, uniformFee } = req.body;
       const result = await this.updateSppTariffUseCase.execute(
         Number(id),
-        amount
+        amount,
+        developmentFee,
+        reRegistrationFee,
+        equipmentFee,
+        extracurricularFee,
+        uniformFee
       );
 
       res.status(200).json({
