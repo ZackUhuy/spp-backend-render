@@ -26,10 +26,17 @@ export class InvoiceController {
         }
       }
 
-      if (Number(year) < student.enrollmentYear || (Number(year) === student.enrollmentYear && Number(month) < 7)) {
+      const yearNum = Number(year);
+      const monthNum = Number(month);
+
+      if (
+        yearNum < student.enrollmentYear ||
+        (yearNum === student.enrollmentYear && monthNum < 7) ||
+        (yearNum === 2026 && monthNum < 7)
+      ) {
         res.status(400).json({
           success: false,
-          message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
+          message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar atau sebelum sistem dimulai (Juli 2026)",
         });
         return;
       }
@@ -138,7 +145,12 @@ export class InvoiceController {
         let totalUnpaidAmount = 0;
         const unpaidMonthsList = [];
 
-        const startMonth = year === student.enrollmentYear ? 7 : 1;
+        let startMonth = 1;
+        if (year === student.enrollmentYear) {
+          startMonth = 7;
+        } else if (year === 2026) {
+          startMonth = 7;
+        }
         for (let m = startMonth; m <= upToMonth; m++) {
           const inv = dbInvoices.find((i) => i.month === m);
           if (!inv) {
@@ -325,7 +337,12 @@ export class InvoiceController {
           let studentUnpaidMonths = 0;
           let studentUnpaidAmount = 0;
 
-          const startMonth = year === student.enrollmentYear ? 7 : 1;
+          let startMonth = 1;
+          if (year === student.enrollmentYear) {
+            startMonth = 7;
+          } else if (year === 2026) {
+            startMonth = 7;
+          }
           for (let m = startMonth; m <= upToMonth; m++) {
             const inv = dbInvoices.find((i) => i.month === m);
             if (!inv) {
@@ -545,7 +562,12 @@ export class InvoiceController {
         orderBy: { month: "asc" },
       });
 
-      const startMonth = year === student.enrollmentYear ? 7 : 1;
+      let startMonth = 1;
+      if (year === student.enrollmentYear) {
+        startMonth = 7;
+      } else if (year === 2026) {
+        startMonth = 7;
+      }
       const invoices = Array.from({ length: 12 - startMonth + 1 }, (_, i) => {
         const month = startMonth + i;
         const existing = dbInvoices.find(
@@ -645,10 +667,16 @@ export class InvoiceController {
       // Check enrollment periods for SPP type
       for (const item of invoiceItems) {
         if (item.invoiceType === "SPP") {
-          if (Number(item.year) < student.enrollmentYear || (Number(item.year) === student.enrollmentYear && Number(item.month) < 7)) {
+          const itemYear = Number(item.year);
+          const itemMonth = Number(item.month);
+          if (
+            itemYear < student.enrollmentYear ||
+            (itemYear === student.enrollmentYear && itemMonth < 7) ||
+            (itemYear === 2026 && itemMonth < 7)
+          ) {
             res.status(400).json({
               success: false,
-              message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
+              message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar atau sebelum sistem dimulai (Juli 2026)",
             });
             return;
           }
@@ -699,22 +727,29 @@ export class InvoiceController {
 
         let baseAmount = 0;
         let discountApplied = 0;
-        if (itemType === "SPP") {
-          baseAmount = tariff.amount;
-          discountApplied = Math.min(baseAmount, student.discountAmount);
-        } else if (itemType === "UANG_PENGEMBANGAN") {
-          baseAmount = tariff.developmentFee;
-        } else if (itemType === "DAFTAR_ULANG") {
-          baseAmount = tariff.reRegistrationFee;
-        } else if (itemType === "UANG_PERALATAN") {
-          baseAmount = tariff.equipmentFee;
-        } else if (itemType === "EKSTRAKURIKULER") {
-          baseAmount = tariff.extracurricularFee;
-        } else if (itemType === "SERAGAM") {
-          baseAmount = tariff.uniformFee;
-        }
+        let amountToPay = 0;
 
-        const amountToPay = baseAmount - discountApplied;
+        if (existingInvoice) {
+          amountToPay = existingInvoice.amount;
+          baseAmount = existingInvoice.baseAmount;
+          discountApplied = existingInvoice.discountApplied;
+        } else {
+          if (itemType === "SPP") {
+            baseAmount = tariff.amount;
+            discountApplied = Math.min(baseAmount, student.discountAmount);
+          } else if (itemType === "UANG_PENGEMBANGAN") {
+            baseAmount = tariff.developmentFee;
+          } else if (itemType === "DAFTAR_ULANG") {
+            baseAmount = tariff.reRegistrationFee;
+          } else if (itemType === "UANG_PERALATAN") {
+            baseAmount = tariff.equipmentFee;
+          } else if (itemType === "EKSTRAKURIKULER") {
+            baseAmount = tariff.extracurricularFee;
+          } else if (itemType === "SERAGAM") {
+            baseAmount = tariff.uniformFee;
+          }
+          amountToPay = baseAmount - discountApplied;
+        }
         totalAmountToPay += amountToPay;
 
         verifiedInvoices.push({
@@ -858,10 +893,16 @@ export class InvoiceController {
       // Check enrollment periods for SPP type
       for (const item of invoiceItems) {
         if (item.invoiceType === "SPP") {
-          if (Number(item.year) < student.enrollmentYear || (Number(item.year) === student.enrollmentYear && Number(item.month) < 7)) {
+          const itemYear = Number(item.year);
+          const itemMonth = Number(item.month);
+          if (
+            itemYear < student.enrollmentYear ||
+            (itemYear === student.enrollmentYear && itemMonth < 7) ||
+            (itemYear === 2026 && itemMonth < 7)
+          ) {
             res.status(400).json({
               success: false,
-              message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar",
+              message: "Akses ditolak: Tagihan tidak tersedia untuk periode sebelum siswa terdaftar atau sebelum sistem dimulai (Juli 2026)",
             });
             return;
           }
@@ -911,29 +952,38 @@ export class InvoiceController {
         }
 
         let baseAmount = 0;
-        let discountVal = 0;
-        if (itemType === "SPP") {
-          const rawBaseAmount = tariff ? Number(tariff.amount) : 0;
-          baseAmount = isNaN(rawBaseAmount) || rawBaseAmount <= 0 ? 185000 : rawBaseAmount;
-          const rawDiscount = student ? Number(student.discountAmount) : 0;
-          discountVal = isNaN(rawDiscount) ? 0 : rawDiscount;
-        } else if (itemType === "UANG_PENGEMBANGAN") {
-          baseAmount = tariff ? Number(tariff.developmentFee) : 0;
-        } else if (itemType === "DAFTAR_ULANG") {
-          baseAmount = tariff ? Number(tariff.reRegistrationFee) : 0;
-        } else if (itemType === "UANG_PERALATAN") {
-          baseAmount = tariff ? Number(tariff.equipmentFee) : 0;
-        } else if (itemType === "EKSTRAKURIKULER") {
-          baseAmount = tariff ? Number(tariff.extracurricularFee) : 0;
-        } else if (itemType === "SERAGAM") {
-          baseAmount = tariff ? Number(tariff.uniformFee) : 0;
-        }
+        let discountApplied = 0;
+        let amountToPay = 0;
 
-        const discountApplied = Math.min(baseAmount, discountVal);
-        const calculatedAmount = baseAmount - discountApplied;
-        const amountToPay = isNaN(calculatedAmount) || calculatedAmount <= 0 
-          ? 1000 
-          : Math.round(calculatedAmount);
+        if (existingInvoice) {
+          amountToPay = existingInvoice.amount;
+          baseAmount = existingInvoice.baseAmount;
+          discountApplied = existingInvoice.discountApplied;
+        } else {
+          let discountVal = 0;
+          if (itemType === "SPP") {
+            const rawBaseAmount = tariff ? Number(tariff.amount) : 0;
+            baseAmount = isNaN(rawBaseAmount) || rawBaseAmount <= 0 ? 185000 : rawBaseAmount;
+            const rawDiscount = student ? Number(student.discountAmount) : 0;
+            discountVal = isNaN(rawDiscount) ? 0 : rawDiscount;
+          } else if (itemType === "UANG_PENGEMBANGAN") {
+            baseAmount = tariff ? Number(tariff.developmentFee) : 0;
+          } else if (itemType === "DAFTAR_ULANG") {
+            baseAmount = tariff ? Number(tariff.reRegistrationFee) : 0;
+          } else if (itemType === "UANG_PERALATAN") {
+            baseAmount = tariff ? Number(tariff.equipmentFee) : 0;
+          } else if (itemType === "EKSTRAKURIKULER") {
+            baseAmount = tariff ? Number(tariff.extracurricularFee) : 0;
+          } else if (itemType === "SERAGAM") {
+            baseAmount = tariff ? Number(tariff.uniformFee) : 0;
+          }
+
+          discountApplied = Math.min(baseAmount, discountVal);
+          const calculatedAmount = baseAmount - discountApplied;
+          amountToPay = isNaN(calculatedAmount) || calculatedAmount <= 0 
+            ? 1000 
+            : Math.round(calculatedAmount);
+        }
 
         totalAmountToPay += amountToPay;
         verifiedInvoices.push({
