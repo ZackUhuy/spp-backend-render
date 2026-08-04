@@ -9,16 +9,23 @@ export async function logActivity(
   req?: Request
 ): Promise<void> {
   try {
-    const ipAddress = req 
-      ? (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || null) 
-      : null;
+    let ipAddress: string | null = null;
+    if (req) {
+      const forwarded = req.headers["x-forwarded-for"];
+      const rawIp = typeof forwarded === "string"
+        ? forwarded
+        : (Array.isArray(forwarded) ? forwarded[0] : (req.socket?.remoteAddress || null));
+      if (rawIp) {
+        ipAddress = rawIp.split(",")[0].trim();
+      }
+    }
       
     await prisma.activityLog.create({
       data: {
         userId,
         action,
         description,
-        ipAddress: ipAddress ? ipAddress.split(",")[0].trim() : null,
+        ipAddress,
       },
     });
   } catch (error: any) {
