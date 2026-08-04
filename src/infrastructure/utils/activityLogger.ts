@@ -17,7 +17,7 @@ export async function logActivity(
         rawIp = forwarded;
       } else if (Array.isArray(forwarded) && forwarded.length > 0 && typeof forwarded[0] === "string") {
         rawIp = forwarded[0];
-      } else if (req.socket && req.socket.remoteAddress) {
+      } else if (req.socket && typeof req.socket.remoteAddress === "string") {
         rawIp = req.socket.remoteAddress;
       }
 
