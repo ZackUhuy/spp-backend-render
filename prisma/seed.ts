@@ -232,10 +232,10 @@ async function main() {
     
     let className = 'PPDB';
     if (!isPPDB) {
-      if (targetUnit.id === 1) className = 'KB-A';
-      else if (targetUnit.id === 2) className = 'RA-B';
-      else if (targetUnit.id === 3) className = 'I-A';
-      else if (targetUnit.id === 4) className = 'TPA-Balita';
+      if (targetUnit.id === 1) className = 'KB';
+      else if (targetUnit.id === 2) className = i % 2 === 0 ? 'A1' : 'B1';
+      else if (targetUnit.id === 3) className = i % 2 === 0 ? '1 Marwa' : '1 Mina';
+      else if (targetUnit.id === 4) className = 'PPDB';
     }
 
     await prisma.student.upsert({
