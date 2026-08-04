@@ -96,14 +96,15 @@ export class TransactionController {
         throw new Error("UpdateTransactionUseCase tidak terdaftar");
       }
 
-      const result = await this.updateTransactionUseCase.execute(id, {
-        type,
-        categoryId: categoryId !== undefined ? Number(categoryId) : undefined,
-        paymentMethod,
-        amount: amount !== undefined ? Number(amount) : undefined,
-        description,
-        schoolUnitId: schoolUnitId !== undefined ? Number(schoolUnitId) : undefined,
-      });
+      const updateData: any = {};
+      if (type) updateData.type = type;
+      if (categoryId !== undefined) updateData.categoryId = Number(categoryId);
+      if (paymentMethod) updateData.paymentMethod = paymentMethod;
+      if (amount !== undefined) updateData.amount = Number(amount);
+      if (description !== undefined) updateData.description = description;
+      if (schoolUnitId !== undefined) updateData.schoolUnitId = Number(schoolUnitId);
+
+      const result = await this.updateTransactionUseCase.execute(id, updateData);
 
       // Log Aktivitas
       await logActivity(
