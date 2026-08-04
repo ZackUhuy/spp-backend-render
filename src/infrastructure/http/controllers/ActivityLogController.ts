@@ -4,9 +4,14 @@ import prisma from "../../database/prisma.js";
 export class ActivityLogController {
   async getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { search, action, limit = 50, page = 1 } = req.query;
-      const take = Number(limit);
-      const skip = (Number(page) - 1) * take;
+      const search = typeof req.query.search === "string" ? req.query.search : undefined;
+      const action = typeof req.query.action === "string" ? req.query.action : undefined;
+      const limitVal = typeof req.query.limit === "string" ? parseInt(req.query.limit) : 50;
+      const pageVal = typeof req.query.page === "string" ? parseInt(req.query.page) : 1;
+
+      const take = isNaN(limitVal) ? 50 : limitVal;
+      const page = isNaN(pageVal) ? 1 : pageVal;
+      const skip = (page - 1) * take;
 
       const where: any = {};
 
