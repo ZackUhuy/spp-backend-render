@@ -12,10 +12,16 @@ export async function logActivity(
     let ipAddress: string | null = null;
     if (req) {
       const forwarded = req.headers["x-forwarded-for"];
-      const rawIp = typeof forwarded === "string"
-        ? forwarded
-        : (Array.isArray(forwarded) ? forwarded[0] : (req.socket?.remoteAddress || null));
-      if (rawIp) {
+      let rawIp: string | null = null;
+      if (typeof forwarded === "string") {
+        rawIp = forwarded;
+      } else if (Array.isArray(forwarded) && forwarded.length > 0 && typeof forwarded[0] === "string") {
+        rawIp = forwarded[0];
+      } else if (req.socket && req.socket.remoteAddress) {
+        rawIp = req.socket.remoteAddress;
+      }
+
+      if (rawIp !== null) {
         ipAddress = rawIp.split(",")[0].trim();
       }
     }
