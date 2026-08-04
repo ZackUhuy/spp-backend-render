@@ -4,6 +4,7 @@ import type { CreateStudentUseCase } from "../../../application/use-cases/Create
 import type { GetStudentsUseCase } from "../../../application/use-cases/GetStudentsUseCase.js";
 import type { UpdateStudentUseCase } from "../../../application/use-cases/UpdateStudentUseCase.js";
 import type { DeleteStudentUseCase } from "../../../application/use-cases/DeleteStudentUseCase.js";
+import { logActivity } from "../../utils/activityLogger.js";
 
 export class StudentController {
   constructor(
@@ -43,6 +44,16 @@ export class StudentController {
         parentEmail,
         parentPhoneNumber,
       });
+
+      // Log Aktivitas
+      if (req.user) {
+        await logActivity(
+          req.user.id,
+          "CREATE_STUDENT",
+          `Mendaftarkan siswa baru: ${name} (NIS: ${studentNumber}) di kelas ${className}`,
+          req
+        );
+      }
 
       return res.status(201).json({
         success: true,
@@ -135,6 +146,16 @@ export class StudentController {
         req.user!
       );
 
+      // Log Aktivitas
+      if (req.user) {
+        await logActivity(
+          req.user.id,
+          "UPDATE_STUDENT",
+          `Mengupdate data siswa: ${name || student.name} (ID: ${id}) kelas ${className || student.className}`,
+          req
+        );
+      }
+
       return res.status(200).json({
         success: true,
         message: "Data siswa berhasil diperbarui",
@@ -150,6 +171,16 @@ export class StudentController {
       const { id } = req.params as { id: string };
 
       await this.deleteStudentUseCase.execute(parseInt(id), req.user!);
+
+      // Log Aktivitas
+      if (req.user) {
+        await logActivity(
+          req.user.id,
+          "DELETE_STUDENT",
+          `Menghapus data siswa dengan ID: ${id}`,
+          req
+        );
+      }
 
       return res.status(200).json({
         success: true,

@@ -78,6 +78,7 @@ model User {
   className    String?     @map("class_name") @db.VarChar(50)
   transactions Transaction[] @relation("RecorderToTransactions")
   students     Student[]     @relation("ParentToStudents")
+  activityLogs ActivityLog[]
 
   @@map("users")
 }
@@ -180,3 +181,16 @@ model Transaction {
 
   @@map("transactions")
 }
+
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action      String   @db.VarChar(100) // e.g., "CREATE_TRANSACTION", "UPDATE_TRANSACTION", etc.
+  description String   @db.Text
+  ipAddress   String?  @map("ip_address") @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("activity_logs")
+}
+
