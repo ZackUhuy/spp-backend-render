@@ -22,7 +22,7 @@ export async function logActivity(
       }
 
       if (rawIp !== null) {
-        ipAddress = rawIp.split(",")[0]?.trim(); || null;
+        ipAddress = rawIp.split(",")[0]?.trim() || null;
       }
     }
       
