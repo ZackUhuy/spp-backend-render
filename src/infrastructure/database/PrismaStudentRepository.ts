@@ -82,6 +82,8 @@ export class PrismaStudentRepository implements IStudentRepository {
 
     if (filter?.className) {
       where.className = filter.className;
+    } else if (filter?.excludePpdb) {
+      where.className = { not: "PPDB" };
     }
 
     if (filter?.discount) {
@@ -96,10 +98,6 @@ export class PrismaStudentRepository implements IStudentRepository {
       where.status = filter.status;
     } else {
       where.status = "ACTIVE";
-    }
-
-    if (filter?.excludePpdb) {
-      where.className = { not: "PPDB" };
     }
 
     if (filter?.search) {

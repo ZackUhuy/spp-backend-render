@@ -3,6 +3,7 @@ import { authMiddleware } from "../middlewares/authMiddleware.js";
 import { roleMiddleware } from "../middlewares/roleMiddleware.js";
 import prisma from "../../database/prisma.js";
 import bcrypt from "bcrypt";
+import { logActivity } from "../../utils/activityLogger.js";
 
 const router = Router();
 
@@ -72,6 +73,16 @@ router.post("/", async (req, res, next) => {
       },
     });
 
+    // Log Aktivitas
+    if (req.user) {
+      await logActivity(
+        req.user.id,
+        "CREATE_USER",
+        `Membuat akun pengguna baru: ${name} (${role}) dengan No HP ${phoneNumber}`,
+        req
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: "Akun pengguna berhasil dibuat",
@@ -127,6 +138,16 @@ router.put("/:id", async (req, res, next) => {
       data,
     });
 
+    // Log Aktivitas
+    if (req.user) {
+      await logActivity(
+        req.user.id,
+        "UPDATE_USER",
+        `Mengupdate data akun pengguna: ${updatedUser.name} (ID: ${userId})`,
+        req
+      );
+    }
+
     res.status(200).json({
       success: true,
       message: "Data pengguna berhasil diperbarui",
@@ -172,6 +193,16 @@ router.delete("/:id", async (req, res, next) => {
     }
 
     await prisma.user.delete({ where: { id: userId } });
+
+    // Log Aktivitas
+    if (req.user) {
+      await logActivity(
+        req.user.id,
+        "DELETE_USER",
+        `Menghapus akun pengguna: ${existing.name} (ID: ${userId}, Role: ${existing.role})`,
+        req
+      );
+    }
 
     res.status(200).json({
       success: true,

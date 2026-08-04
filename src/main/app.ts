@@ -11,6 +11,7 @@ import transactionRoutes from "../infrastructure/http/routes/transactionRoutes.j
 import invoiceRoutes from "../infrastructure/http/routes/invoiceRoutes.js";
 import userRoutes from "../infrastructure/http/routes/userRoutes.js";
 import parentRoutes from "../infrastructure/http/routes/parentRoutes.js";
+import activityLogRoutes from "../infrastructure/http/routes/activityLogRoutes.js";
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/parent", parentRoutes);
+app.use("/api/activity-logs", activityLogRoutes);
 
 // Global Error Handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

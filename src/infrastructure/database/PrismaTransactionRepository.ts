@@ -118,4 +118,48 @@ export class PrismaTransactionRepository implements ITransactionRepository {
       totalExpense: expenseSum._sum.amount || 0,
     };
   }
+
+  async findById(id: number): Promise<Transaction | null> {
+    const t = await this.prisma.transaction.findUnique({
+      where: { id },
+    });
+    if (!t) return null;
+    return new Transaction(
+      t.id,
+      t.date,
+      t.type,
+      t.categoryId,
+      t.paymentMethod,
+      t.amount,
+      t.schoolUnitId,
+      t.invoiceId,
+      t.description,
+      t.recordedById
+    );
+  }
+
+  async update(id: number, data: Partial<Omit<Transaction, "id" | "date">>): Promise<Transaction> {
+    const updated = await this.prisma.transaction.update({
+      where: { id },
+      data,
+    });
+    return new Transaction(
+      updated.id,
+      updated.date,
+      updated.type,
+      updated.categoryId,
+      updated.paymentMethod,
+      updated.amount,
+      updated.schoolUnitId,
+      updated.invoiceId,
+      updated.description,
+      updated.recordedById
+    );
+  }
+
+  async delete(id: number): Promise<void> {
+    await this.prisma.transaction.delete({
+      where: { id },
+    });
+  }
 }

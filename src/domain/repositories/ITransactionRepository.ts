@@ -14,4 +14,7 @@ export interface ITransactionRepository {
     startDate?: Date;
     endDate?: Date;
   }): Promise<{ totalIncome: number; totalExpense: number }>;
+  findById(id: number): Promise<Transaction | null>;
+  update(id: number, data: Partial<Omit<Transaction, "id" | "date">>): Promise<Transaction>;
+  delete(id: number): Promise<void>;
 }
