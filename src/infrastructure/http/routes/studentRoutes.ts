@@ -140,6 +140,8 @@ router.post(
           const unitName = (row.unit || row.schoolUnitName || "SD").toString().trim();
           const enrollmentYearStr = (row.angkatan || row.enrollmentYear || new Date().getFullYear()).toString().trim();
           const discountStr = (row.diskon || row.discountAmount || row.discountPercentage || "0").toString().trim();
+          const discountEquipmentStr = (row.diskon_peralatan || row.discountEquipment || "0").toString().trim();
+          const discountExtracurricularStr = (row.diskon_ekskul || row.discountExtracurricular || "0").toString().trim();
           const birthDate = (row.tanggal_lahir || row.birthDate || "").toString().trim();
           const parentName = (row.nama_ortu || row.parentName || `Wali dari ${name}`).toString().trim();
           let parentPhoneNumber = (row.hp_ortu || row.parentPhoneNumber || "").toString().trim();
@@ -161,6 +163,8 @@ router.post(
           const schoolUnitId = getUnitIdByName(unitName);
           const enrollmentYear = Number(enrollmentYearStr) || new Date().getFullYear();
           const discountAmount = Number(discountStr) || 0;
+          const discountEquipment = Number(discountEquipmentStr) || 0;
+          const discountExtracurricular = Number(discountExtracurricularStr) || 0;
 
           if (authResult.role === "UNIT_ADMIN" && schoolUnitId !== authResult.schoolUnitId) {
             throw new Error(`Akses ditolak: Baris ${index + 1} berada pada unit yang berbeda dari kewenangan Anda`);
@@ -213,6 +217,9 @@ router.post(
                   schoolUnitId,
                   enrollmentYear,
                   discountAmount,
+                  discountEquipment,
+                  discountExtracurricular,
+                  registrationStatus: "NAIK_KELAS",
                   parentId: parentUser.id,
                 },
               });
@@ -225,6 +232,9 @@ router.post(
                   schoolUnitId,
                   enrollmentYear,
                   discountAmount,
+                  discountEquipment,
+                  discountExtracurricular,
+                  registrationStatus: "BARU",
                   parentId: parentUser.id,
                 },
               });

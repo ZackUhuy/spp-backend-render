@@ -411,6 +411,7 @@ export class InvoiceController {
         include: {
           schoolUnit: { select: { name: true } },
           parent: { select: { id: true, name: true, email: true } },
+          sdExtracurriculars: true,
         },
       });
 
@@ -487,18 +488,66 @@ export class InvoiceController {
 
         const isSd = student.schoolUnit.name.toUpperCase() === "SD" || student.schoolUnitId === 3;
 
+        let reRegistrationFee = tariff.reRegistrationFee;
+
+        // Fetch equipment and extracurricular fees from extra_equipment_tariffs if KB or RA
+        let equipmentFee = 0;
+        let extracurricularFee = 0;
+        if (!isSd && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+          const level = student.schoolUnitId === 1 ? "KB" : "A"; // default to A for entry level RA in PPDB
+          const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+            where: {
+              uq_school_unit_enrollment_year_level: {
+                schoolUnitId: student.schoolUnitId,
+                enrollmentYear: student.enrollmentYear,
+                level,
+              },
+            },
+          });
+          if (extraTariff) {
+            if (student.registrationStatus === "BARU") {
+              equipmentFee = extraTariff.equipmentFeeNew || extraTariff.equipmentFee;
+              extracurricularFee = extraTariff.extracurricularFeeNew || extraTariff.extracurricularFee;
+            } else if (student.registrationStatus === "NAIK_KELAS") {
+              equipmentFee = extraTariff.equipmentFeePromotion || extraTariff.equipmentFee;
+              extracurricularFee = extraTariff.extracurricularFeePromotion || extraTariff.extracurricularFee;
+            } else if (student.registrationStatus === "TINGGAL_KELAS") {
+              equipmentFee = extraTariff.equipmentFeeRepeat || extraTariff.equipmentFee;
+              extracurricularFee = extraTariff.extracurricularFeeRepeat || extraTariff.extracurricularFee;
+            } else {
+              equipmentFee = extraTariff.equipmentFeeNew || extraTariff.equipmentFee;
+              extracurricularFee = extraTariff.extracurricularFeeNew || extraTariff.extracurricularFee;
+            }
+          }
+        }
+
+        // Apply student-specific equipment and extracurricular discounts
+        const equipDiscountApplied = Math.min(equipmentFee, student.discountEquipment || 0);
+        const equipNetAmount = equipmentFee - equipDiscountApplied;
+
+        let sdExtraFee = 0;
+        if (isSd && student.sdExtracurriculars && student.sdExtracurriculars.length > 0) {
+          sdExtraFee = student.sdExtracurriculars.reduce((sum: number, e: any) => sum + (e.fee || 0), 0);
+        }
+        const sdExtraDiscount = Math.min(sdExtraFee, student.discountExtracurricular || 0);
+        const sdExtraNet = sdExtraFee - sdExtraDiscount;
+
+        const extraDiscountApplied = isSd ? sdExtraDiscount : Math.min(extracurricularFee, student.discountExtracurricular || 0);
+        const extraNetAmount = isSd ? sdExtraNet : (extracurricularFee - extraDiscountApplied);
+
         const feeTypes = isSd
           ? [
-              { type: "DAFTAR_ULANG", base: tariff.reRegistrationFee, net: tariff.reRegistrationFee, month: 7 },
-              { type: "UANG_PENGEMBANGAN", base: tariff.developmentFee, net: tariff.developmentFee, month: 7 },
-              { type: "SPP", base: baseSppAmount, net: sppNetAmount, month: 7 }
-            ]
-          : [
-              { type: "DAFTAR_ULANG", base: tariff.reRegistrationFee, net: tariff.reRegistrationFee, month: 7 },
+              { type: "DAFTAR_ULANG", base: reRegistrationFee, net: reRegistrationFee, month: 7 },
               { type: "UANG_PENGEMBANGAN", base: tariff.developmentFee, net: tariff.developmentFee, month: 7 },
               { type: "SPP", base: baseSppAmount, net: sppNetAmount, month: 7 },
-              { type: "UANG_PERALATAN", base: tariff.equipmentFee, net: tariff.equipmentFee, month: 7 },
-              { type: "EKSTRAKURIKULER", base: tariff.extracurricularFee, net: tariff.extracurricularFee, month: 7 },
+              ...(sdExtraFee > 0 ? [{ type: "EKSTRAKURIKULER", base: sdExtraFee, net: sdExtraNet, month: 7 }] : [])
+            ]
+          : [
+              { type: "DAFTAR_ULANG", base: reRegistrationFee, net: reRegistrationFee, month: 7 },
+              { type: "UANG_PENGEMBANGAN", base: tariff.developmentFee, net: tariff.developmentFee, month: 7 },
+              { type: "SPP", base: baseSppAmount, net: sppNetAmount, month: 7 },
+              { type: "UANG_PERALATAN", base: equipmentFee, net: equipNetAmount, month: 7 },
+              { type: "EKSTRAKURIKULER", base: extracurricularFee, net: extraNetAmount, month: 7 },
               { type: "SERAGAM", base: tariff.uniformFee, net: tariff.uniformFee, month: 7 }
             ];
 
@@ -594,6 +643,245 @@ export class InvoiceController {
           midtransOrderId: null,
         };
       });
+
+      // Append other annual/one-time fees for month 7 (active students)
+      if (startMonth === 7) {
+        const isSd = student.schoolUnitId === 3;
+        
+        // 1. DAFTAR_ULANG
+        const existingRereg = dbInvoices.find((inv) => inv.invoiceType === "DAFTAR_ULANG" && inv.month === 7);
+        let reRegistrationFee = tariff.reRegistrationFee;
+        if (existingRereg) {
+          if (existingRereg.status === "PENDING") {
+            existingRereg.baseAmount = reRegistrationFee;
+            existingRereg.discountApplied = 0;
+            existingRereg.amount = reRegistrationFee;
+          }
+          invoices.push(existingRereg);
+        } else {
+          invoices.push({
+            id: null,
+            studentId: student.id,
+            invoiceType: "DAFTAR_ULANG" as any,
+            month: 7,
+            year,
+            baseAmount: reRegistrationFee,
+            discountApplied: 0,
+            amount: reRegistrationFee,
+            status: "PENDING" as any,
+            midtransOrderId: null,
+          });
+        }
+
+        // 2. UANG_PENGEMBANGAN (Only for new enrollment year)
+        if (year === student.enrollmentYear) {
+          const existingDev = dbInvoices.find((inv) => inv.invoiceType === "UANG_PENGEMBANGAN" && inv.month === 7);
+          if (existingDev) {
+            if (existingDev.status === "PENDING") {
+              existingDev.baseAmount = tariff.developmentFee;
+              existingDev.discountApplied = 0;
+              existingDev.amount = tariff.developmentFee;
+            }
+            invoices.push(existingDev);
+          } else {
+            invoices.push({
+              id: null,
+              studentId: student.id,
+              invoiceType: "UANG_PENGEMBANGAN" as any,
+              month: 7,
+              year,
+              baseAmount: tariff.developmentFee,
+              discountApplied: 0,
+              amount: tariff.developmentFee,
+              status: "PENDING" as any,
+              midtransOrderId: null,
+            });
+          }
+        }
+
+        // 3. SERAGAM (Only for new enrollment year)
+        if (year === student.enrollmentYear) {
+          const existingUniform = dbInvoices.find((inv) => inv.invoiceType === "SERAGAM" && inv.month === 7);
+          if (existingUniform) {
+            if (existingUniform.status === "PENDING") {
+              existingUniform.baseAmount = tariff.uniformFee;
+              existingUniform.discountApplied = 0;
+              existingUniform.amount = tariff.uniformFee;
+            }
+            invoices.push(existingUniform);
+          } else {
+            invoices.push({
+              id: null,
+              studentId: student.id,
+              invoiceType: "SERAGAM" as any,
+              month: 7,
+              year,
+              baseAmount: tariff.uniformFee,
+              discountApplied: 0,
+              amount: tariff.uniformFee,
+              status: "PENDING" as any,
+              midtransOrderId: null,
+            });
+          }
+        }
+
+        // 4. UANG_PERALATAN (Only for KB and RA, year >= enrollmentYear)
+        if (!isSd && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+          const level = student.schoolUnitId === 1 
+            ? "KB" 
+            : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+          const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+            where: {
+              uq_school_unit_enrollment_year_level: {
+                schoolUnitId: student.schoolUnitId,
+                enrollmentYear: student.enrollmentYear,
+                level,
+              },
+            },
+          });
+          
+          let equipmentFee = 0;
+          if (extraTariff) {
+            if (student.registrationStatus === "BARU") {
+              equipmentFee = extraTariff.equipmentFeeNew || extraTariff.equipmentFee;
+            } else if (student.registrationStatus === "NAIK_KELAS") {
+              equipmentFee = extraTariff.equipmentFeePromotion || extraTariff.equipmentFee;
+            } else if (student.registrationStatus === "TINGGAL_KELAS") {
+              equipmentFee = extraTariff.equipmentFeeRepeat || extraTariff.equipmentFee;
+            } else {
+              equipmentFee = extraTariff.equipmentFeeNew || extraTariff.equipmentFee;
+            }
+          }
+
+          const discountEquip = Math.min(equipmentFee, student.discountEquipment || 0);
+          const existingEquip = dbInvoices.find((inv) => inv.invoiceType === "UANG_PERALATAN" && inv.month === 7);
+          if (existingEquip) {
+            if (existingEquip.status === "PENDING") {
+              existingEquip.baseAmount = equipmentFee;
+              existingEquip.discountApplied = discountEquip;
+              existingEquip.amount = equipmentFee - discountEquip;
+            }
+            invoices.push(existingEquip);
+          } else {
+            invoices.push({
+              id: null,
+              studentId: student.id,
+              invoiceType: "UANG_PERALATAN" as any,
+              month: 7,
+              year,
+              baseAmount: equipmentFee,
+              discountApplied: discountEquip,
+              amount: equipmentFee - discountEquip,
+              status: "PENDING" as any,
+              midtransOrderId: null,
+            });
+          }
+        }
+
+        // 5. EKSTRAKURIKULER
+        let extraFee = 0;
+        let hasExtraBilling = false;
+
+        if (!isSd && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+          hasExtraBilling = true;
+          const level = student.schoolUnitId === 1 
+            ? "KB" 
+            : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+          const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+            where: {
+              uq_school_unit_enrollment_year_level: {
+                schoolUnitId: student.schoolUnitId,
+                enrollmentYear: student.enrollmentYear,
+                level,
+              },
+            },
+          });
+          
+          if (extraTariff) {
+            if (student.registrationStatus === "BARU") {
+              extraFee = extraTariff.extracurricularFeeNew || extraTariff.extracurricularFee;
+            } else if (student.registrationStatus === "NAIK_KELAS") {
+              extraFee = extraTariff.extracurricularFeePromotion || extraTariff.extracurricularFee;
+            } else if (student.registrationStatus === "TINGGAL_KELAS") {
+              extraFee = extraTariff.extracurricularFeeRepeat || extraTariff.extracurricularFee;
+            } else {
+              extraFee = extraTariff.extracurricularFeeNew || extraTariff.extracurricularFee;
+            }
+          }
+        } else if (student.schoolUnitId === 3) {
+          // SD extracurriculars
+          if (student.sdExtracurriculars && student.sdExtracurriculars.length > 0) {
+            hasExtraBilling = true;
+            extraFee = student.sdExtracurriculars.reduce((sum: number, e: any) => sum + (e.fee || 0), 0);
+          }
+        }
+
+        if (hasExtraBilling) {
+          const discountExtra = Math.min(extraFee, student.discountExtracurricular || 0);
+          const existingExtra = dbInvoices.find((inv) => inv.invoiceType === "EKSTRAKURIKULER" && inv.month === 7);
+          if (existingExtra) {
+            if (existingExtra.status === "PENDING") {
+              existingExtra.baseAmount = extraFee;
+              existingExtra.discountApplied = discountExtra;
+              existingExtra.amount = extraFee - discountExtra;
+            }
+            invoices.push(existingExtra);
+          } else {
+            invoices.push({
+              id: null,
+              studentId: student.id,
+              invoiceType: "EKSTRAKURIKULER" as any,
+              month: 7,
+              year,
+              baseAmount: extraFee,
+              discountApplied: discountExtra,
+              amount: extraFee - discountExtra,
+              status: "PENDING" as any,
+              midtransOrderId: null,
+            });
+          }
+        }
+      }
+
+      // 6. FULLDAY (Monthly for KB & RA if student.isFullday is enabled)
+      if (student.isFullday && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+        const fulldayTariff = await (prisma as any).fulldayTariff.findUnique({
+          where: {
+            uq_fullday_school_unit_enrollment_year: {
+              schoolUnitId: student.schoolUnitId,
+              enrollmentYear: student.enrollmentYear,
+            },
+          },
+        });
+        if (fulldayTariff && fulldayTariff.monthlyFee > 0) {
+          for (let m = startMonth; m <= 12; m++) {
+            const existingFullday = dbInvoices.find(
+              (inv) => inv.month === m && inv.invoiceType === ("FULLDAY" as any)
+            );
+            if (existingFullday) {
+              if (existingFullday.status === "PENDING") {
+                existingFullday.baseAmount = fulldayTariff.monthlyFee;
+                existingFullday.discountApplied = 0;
+                existingFullday.amount = fulldayTariff.monthlyFee;
+              }
+              invoices.push(existingFullday);
+            } else {
+              invoices.push({
+                id: null,
+                studentId: student.id,
+                invoiceType: "FULLDAY" as any,
+                month: m,
+                year,
+                baseAmount: fulldayTariff.monthlyFee,
+                discountApplied: 0,
+                amount: fulldayTariff.monthlyFee,
+                status: "PENDING" as any,
+                midtransOrderId: null,
+              });
+            }
+          }
+        }
+      }
 
       res.status(200).json({
         success: true,
@@ -740,11 +1028,65 @@ export class InvoiceController {
           } else if (itemType === "UANG_PENGEMBANGAN") {
             baseAmount = tariff.developmentFee;
           } else if (itemType === "DAFTAR_ULANG") {
-            baseAmount = tariff.reRegistrationFee;
+            const reregTariff = await prisma.reRegistrationTariff.findUnique({
+              where: {
+                uq_rereg_school_unit_enrollment_year: {
+                  schoolUnitId: student.schoolUnitId,
+                  enrollmentYear: student.enrollmentYear,
+                },
+              },
+            });
+            if (reregTariff) {
+              if (student.registrationStatus === "BARU") {
+                baseAmount = reregTariff.newStudentFee;
+              } else if (student.registrationStatus === "NAIK_KELAS") {
+                baseAmount = reregTariff.promotionFee;
+              } else if (student.registrationStatus === "TINGGAL_KELAS") {
+                baseAmount = reregTariff.repeatFee;
+              } else {
+                baseAmount = reregTariff.newStudentFee;
+              }
+            } else {
+              baseAmount = tariff.reRegistrationFee;
+            }
           } else if (itemType === "UANG_PERALATAN") {
-            baseAmount = tariff.equipmentFee;
+            let equipFee = 0;
+            if (student.schoolUnitId === 1 || student.schoolUnitId === 2) {
+              const level = student.schoolUnitId === 1 
+                ? "KB" 
+                : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+              const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+                where: {
+                  uq_school_unit_enrollment_year_level: {
+                    schoolUnitId: student.schoolUnitId,
+                    enrollmentYear: student.enrollmentYear,
+                    level,
+                  },
+                },
+              });
+              equipFee = extraTariff?.equipmentFee ?? 0;
+            }
+            baseAmount = equipFee;
+            discountApplied = Math.min(baseAmount, student.discountEquipment || 0);
           } else if (itemType === "EKSTRAKURIKULER") {
-            baseAmount = tariff.extracurricularFee;
+            let extraFee = 0;
+            if (student.schoolUnitId === 1 || student.schoolUnitId === 2) {
+              const level = student.schoolUnitId === 1 
+                ? "KB" 
+                : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+              const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+                where: {
+                  uq_school_unit_enrollment_year_level: {
+                    schoolUnitId: student.schoolUnitId,
+                    enrollmentYear: student.enrollmentYear,
+                    level,
+                  },
+                },
+              });
+              extraFee = extraTariff?.extracurricularFee ?? 0;
+            }
+            baseAmount = extraFee;
+            discountApplied = Math.min(baseAmount, student.discountExtracurricular || 0);
           } else if (itemType === "SERAGAM") {
             baseAmount = tariff.uniformFee;
           }
@@ -969,11 +1311,65 @@ export class InvoiceController {
           } else if (itemType === "UANG_PENGEMBANGAN") {
             baseAmount = tariff ? Number(tariff.developmentFee) : 0;
           } else if (itemType === "DAFTAR_ULANG") {
-            baseAmount = tariff ? Number(tariff.reRegistrationFee) : 0;
+            const reregTariff = await prisma.reRegistrationTariff.findUnique({
+              where: {
+                uq_rereg_school_unit_enrollment_year: {
+                  schoolUnitId: student.schoolUnitId,
+                  enrollmentYear: student.enrollmentYear,
+                },
+              },
+            });
+            if (reregTariff) {
+              if (student.registrationStatus === "BARU") {
+                baseAmount = reregTariff.newStudentFee;
+              } else if (student.registrationStatus === "NAIK_KELAS") {
+                baseAmount = reregTariff.promotionFee;
+              } else if (student.registrationStatus === "TINGGAL_KELAS") {
+                baseAmount = reregTariff.repeatFee;
+              } else {
+                baseAmount = reregTariff.newStudentFee;
+              }
+            } else {
+              baseAmount = tariff ? Number(tariff.reRegistrationFee) : 0;
+            }
           } else if (itemType === "UANG_PERALATAN") {
-            baseAmount = tariff ? Number(tariff.equipmentFee) : 0;
+            let equipFee = 0;
+            if (student && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+              const level = student.schoolUnitId === 1 
+                ? "KB" 
+                : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+              const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+                where: {
+                  uq_school_unit_enrollment_year_level: {
+                    schoolUnitId: student.schoolUnitId,
+                    enrollmentYear: student.enrollmentYear,
+                    level,
+                  },
+                },
+              });
+              equipFee = extraTariff?.equipmentFee ?? 0;
+            }
+            baseAmount = equipFee;
+            discountVal = student ? Number(student.discountEquipment || 0) : 0;
           } else if (itemType === "EKSTRAKURIKULER") {
-            baseAmount = tariff ? Number(tariff.extracurricularFee) : 0;
+            let extraFee = 0;
+            if (student && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+              const level = student.schoolUnitId === 1 
+                ? "KB" 
+                : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+              const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+                where: {
+                  uq_school_unit_enrollment_year_level: {
+                    schoolUnitId: student.schoolUnitId,
+                    enrollmentYear: student.enrollmentYear,
+                    level,
+                  },
+                },
+              });
+              extraFee = extraTariff?.extracurricularFee ?? 0;
+            }
+            baseAmount = extraFee;
+            discountVal = student ? Number(student.discountExtracurricular || 0) : 0;
           } else if (itemType === "SERAGAM") {
             baseAmount = tariff ? Number(tariff.uniformFee) : 0;
           }

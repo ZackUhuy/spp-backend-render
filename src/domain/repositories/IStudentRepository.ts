@@ -2,7 +2,7 @@ import { Student } from "../entities/Student.js";
 
 export interface IStudentRepository {
   create(
-    studentData: Omit<Student, "id" | "parentId"> & { parentId?: number },
+    studentData: Omit<Student, "id" | "parentId"> & { parentId?: number; sdExtracurricularIds?: number[] },
     parentData?: {
       name: string;
       email: string;
@@ -30,11 +30,16 @@ export interface IStudentRepository {
       schoolUnitId?: number;
       enrollmentYear?: number;
       discountAmount?: number;
+      discountEquipment?: number;
+      discountExtracurricular?: number;
+      registrationStatus?: string;
+      isFullday?: boolean;
       birthDate?: string | null;
       parentName?: string;
       parentEmail?: string | null;
       parentPhoneNumber?: string;
       status?: string;
+      sdExtracurricularIds?: number[];
     }
   ): Promise<Student>;
   delete(id: number): Promise<void>;

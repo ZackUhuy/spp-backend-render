@@ -63,11 +63,89 @@ export class ProcessOfflinePaymentUseCase {
     } else if (invoiceType === InvoiceType.DAFTAR_ULANG) {
       baseAmount = tariff.reRegistrationFee;
     } else if (invoiceType === InvoiceType.UANG_PERALATAN) {
-      baseAmount = tariff.equipmentFee;
+      let equipFee = 0;
+      if (student.schoolUnitId === 1 || student.schoolUnitId === 2) {
+        const level = student.schoolUnitId === 1 
+          ? "KB" 
+          : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+        const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+          where: {
+            uq_school_unit_enrollment_year_level: {
+              schoolUnitId: student.schoolUnitId,
+              enrollmentYear: student.enrollmentYear,
+              level,
+            },
+          },
+        });
+        if (extraTariff) {
+          if (student.registrationStatus === "BARU") {
+            equipFee = extraTariff.equipmentFeeNew || extraTariff.equipmentFee;
+          } else if (student.registrationStatus === "NAIK_KELAS") {
+            equipFee = extraTariff.equipmentFeePromotion || extraTariff.equipmentFee;
+          } else if (student.registrationStatus === "TINGGAL_KELAS") {
+            equipFee = extraTariff.equipmentFeeRepeat || extraTariff.equipmentFee;
+          } else {
+            equipFee = extraTariff.equipmentFeeNew || extraTariff.equipmentFee;
+          }
+        }
+      }
+      baseAmount = equipFee;
+      discountApplied = Math.min(baseAmount, student.discountEquipment || 0);
     } else if (invoiceType === InvoiceType.EKSTRAKURIKULER) {
-      baseAmount = tariff.extracurricularFee;
+      let extraFee = 0;
+      if (student.schoolUnitId === 1 || student.schoolUnitId === 2) {
+        const level = student.schoolUnitId === 1 
+          ? "KB" 
+          : (student.className.trim().toUpperCase().charAt(0) === "B" ? "B" : "A");
+        const extraTariff = await prisma.extraEquipmentTariff.findUnique({
+          where: {
+            uq_school_unit_enrollment_year_level: {
+              schoolUnitId: student.schoolUnitId,
+              enrollmentYear: student.enrollmentYear,
+              level,
+            },
+          },
+        });
+        if (extraTariff) {
+          if (student.registrationStatus === "BARU") {
+            extraFee = extraTariff.extracurricularFeeNew || extraTariff.extracurricularFee;
+          } else if (student.registrationStatus === "NAIK_KELAS") {
+            extraFee = extraTariff.extracurricularFeePromotion || extraTariff.extracurricularFee;
+          } else if (student.registrationStatus === "TINGGAL_KELAS") {
+            extraFee = extraTariff.extracurricularFeeRepeat || extraTariff.extracurricularFee;
+          } else {
+            extraFee = extraTariff.extracurricularFeeNew || extraTariff.extracurricularFee;
+          }
+        }
+      } else if (student.schoolUnitId === 3) {
+        const fullStudent = await prisma.student.findUnique({
+          where: { id: student.id },
+          include: { sdExtracurriculars: true },
+        });
+        if (fullStudent && fullStudent.sdExtracurriculars) {
+          extraFee = fullStudent.sdExtracurriculars.reduce((sum: number, e: any) => sum + (e.fee || 0), 0);
+        }
+      }
+      baseAmount = extraFee;
+      discountApplied = Math.min(baseAmount, student.discountExtracurricular || 0);
     } else if (invoiceType === InvoiceType.SERAGAM) {
       baseAmount = tariff.uniformFee;
+    } else if (invoiceType === InvoiceType.FULLDAY) {
+      let fulldayFee = 0;
+      if (student.schoolUnitId === 1 || student.schoolUnitId === 2) {
+        const ft = await (prisma as any).fulldayTariff.findUnique({
+          where: {
+            uq_fullday_school_unit_enrollment_year: {
+              schoolUnitId: student.schoolUnitId,
+              enrollmentYear: student.enrollmentYear,
+            },
+          },
+        });
+        if (ft) {
+          fulldayFee = ft.monthlyFee;
+        }
+      }
+      baseAmount = fulldayFee;
     }
 
     const totalInvoiceAmount = baseAmount - discountApplied;
@@ -82,7 +160,10 @@ export class ProcessOfflinePaymentUseCase {
       currentPaid = txSum._sum.amount || 0;
     }
 
-    const remainingAmount = Math.max(0, (existingInvoice ? existingInvoice.amount : totalInvoiceAmount) - currentPaid);
+    const targetInvoiceAmount = (existingInvoice && existingInvoice.status !== InvoiceStatus.PENDING)
+      ? existingInvoice.amount
+      : totalInvoiceAmount;
+    const remainingAmount = Math.max(0, targetInvoiceAmount - currentPaid);
 
     // Tentukan nominal transaksi pembayaran tunai ini
     let paymentTxAmount = paymentAmount !== undefined ? paymentAmount : remainingAmount;
@@ -96,7 +177,7 @@ export class ProcessOfflinePaymentUseCase {
 
     // Tentukan status akhir invoice setelah pembayaran ini
     const totalPaidAfterTx = currentPaid + paymentTxAmount;
-    const finalInvoiceAmount = existingInvoice ? existingInvoice.amount : totalInvoiceAmount;
+    const finalInvoiceAmount = targetInvoiceAmount;
     const finalStatus = totalPaidAfterTx >= finalInvoiceAmount ? InvoiceStatus.PAID : InvoiceStatus.PENDING;
 
     if (!existingInvoice) {
@@ -115,6 +196,11 @@ export class ProcessOfflinePaymentUseCase {
         ...existingInvoice,
         status: finalStatus,
       };
+      if (existingInvoice.status === InvoiceStatus.PENDING) {
+        invoiceData.baseAmount = baseAmount;
+        invoiceData.discountApplied = discountApplied;
+        invoiceData.amount = totalInvoiceAmount;
+      }
     }
 
     // 3. Eksekusi Kategori Pembayaran Dinamis
@@ -124,6 +210,7 @@ export class ProcessOfflinePaymentUseCase {
     else if (invoiceType === InvoiceType.UANG_PERALATAN) categoryName = "Uang Peralatan";
     else if (invoiceType === InvoiceType.EKSTRAKURIKULER) categoryName = "Uang Ekstrakurikuler";
     else if (invoiceType === InvoiceType.SERAGAM) categoryName = "Uang Seragam";
+    else if (invoiceType === InvoiceType.FULLDAY) categoryName = "Uang Fullday";
 
     let category = await prisma.category.findFirst({
       where: {

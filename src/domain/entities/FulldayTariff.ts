@@ -1,0 +1,8 @@
+export class FulldayTariff {
+  constructor(
+    public readonly id: number,
+    public readonly schoolUnitId: number,
+    public readonly enrollmentYear: number,
+    public readonly monthlyFee: number = 0
+  ) {}
+}

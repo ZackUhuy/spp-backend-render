@@ -13,11 +13,16 @@ export class UpdateStudentUseCase {
       schoolUnitId?: number;
       enrollmentYear?: number;
       discountAmount?: number;
+      discountEquipment?: number;
+      discountExtracurricular?: number;
+      registrationStatus?: string;
+      isFullday?: boolean;
       birthDate?: string | null;
       parentName?: string;
       parentEmail?: string | null;
       parentPhoneNumber?: string;
       status?: string;
+      sdExtracurricularIds?: number[];
     },
     user: { role: string; schoolUnitId: number | null }
   ): Promise<Student> {
