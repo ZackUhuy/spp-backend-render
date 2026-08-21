@@ -21,6 +21,7 @@ const app = express();
 
 app.use(httpLogger);
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
 
