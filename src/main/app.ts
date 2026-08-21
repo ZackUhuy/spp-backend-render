@@ -12,6 +12,10 @@ import invoiceRoutes from "../infrastructure/http/routes/invoiceRoutes.js";
 import userRoutes from "../infrastructure/http/routes/userRoutes.js";
 import parentRoutes from "../infrastructure/http/routes/parentRoutes.js";
 import activityLogRoutes from "../infrastructure/http/routes/activityLogRoutes.js";
+import extraEquipmentTariffRoutes from "../infrastructure/http/routes/extraEquipmentTariffRoutes.js";
+import reRegistrationTariffRoutes from "../infrastructure/http/routes/reRegistrationTariffRoutes.js";
+import sdExtracurricularRoutes from "../infrastructure/http/routes/sdExtracurricularRoutes.js";
+import fulldayTariffRoutes from "../infrastructure/http/routes/fulldayTariffRoutes.js";
 
 const app = express();
 
@@ -30,6 +34,10 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/parent", parentRoutes);
 app.use("/api/activity-logs", activityLogRoutes);
+app.use("/api/extra-equipment-tariffs", extraEquipmentTariffRoutes);
+app.use("/api/re-registration-tariffs", reRegistrationTariffRoutes);
+app.use("/api/sd-extracurriculars", sdExtracurricularRoutes);
+app.use("/api/fullday-tariffs", fulldayTariffRoutes);
 
 // Global Error Handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

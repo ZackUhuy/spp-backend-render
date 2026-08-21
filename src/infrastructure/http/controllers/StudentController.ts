@@ -23,9 +23,14 @@ export class StudentController {
         schoolUnitId,
         enrollmentYear,
         discountAmount,
+        discountEquipment,
+        discountExtracurricular,
+        registrationStatus,
+        isFullday,
         parentName,
         parentEmail,
         parentPhoneNumber,
+        sdExtracurricularIds,
       } = req.body;
 
       // Isolasi unit sekolah untuk UNIT_ADMIN
@@ -39,10 +44,15 @@ export class StudentController {
         className,
         schoolUnitId,
         enrollmentYear,
-        discountAmount,
+        discountAmount: Number(discountAmount || 0),
+        discountEquipment: Number(discountEquipment || 0),
+        discountExtracurricular: Number(discountExtracurricular || 0),
+        registrationStatus: registrationStatus || "BARU",
+        isFullday: Boolean(isFullday),
         parentName,
         parentEmail,
         parentPhoneNumber,
+        sdExtracurricularIds,
       });
 
       // Log Aktivitas
@@ -122,27 +132,38 @@ export class StudentController {
         schoolUnitId,
         enrollmentYear,
         discountAmount,
+        discountEquipment,
+        discountExtracurricular,
+        registrationStatus,
+        isFullday,
         birthDate,
         parentName,
         parentEmail,
         parentPhoneNumber,
         status,
+        sdExtracurricularIds,
       } = req.body;
+
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (className !== undefined) updateData.className = className;
+      if (schoolUnitId !== undefined) updateData.schoolUnitId = schoolUnitId;
+      if (enrollmentYear !== undefined) updateData.enrollmentYear = enrollmentYear;
+      if (discountAmount !== undefined) updateData.discountAmount = Number(discountAmount);
+      if (discountEquipment !== undefined) updateData.discountEquipment = Number(discountEquipment);
+      if (discountExtracurricular !== undefined) updateData.discountExtracurricular = Number(discountExtracurricular);
+      if (registrationStatus !== undefined) updateData.registrationStatus = registrationStatus;
+      if (isFullday !== undefined) updateData.isFullday = Boolean(isFullday);
+      if (birthDate !== undefined) updateData.birthDate = birthDate;
+      if (parentName !== undefined) updateData.parentName = parentName;
+      if (parentEmail !== undefined) updateData.parentEmail = parentEmail;
+      if (parentPhoneNumber !== undefined) updateData.parentPhoneNumber = parentPhoneNumber;
+      if (status !== undefined) updateData.status = status;
+      if (sdExtracurricularIds !== undefined) updateData.sdExtracurricularIds = sdExtracurricularIds;
 
       const student = await this.updateStudentUseCase.execute(
         parseInt(id),
-        {
-          name,
-          className,
-          schoolUnitId,
-          enrollmentYear,
-          discountAmount,
-          birthDate,
-          parentName,
-          parentEmail,
-          parentPhoneNumber,
-          status,
-        },
+        updateData,
         req.user!
       );
 

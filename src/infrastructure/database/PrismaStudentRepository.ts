@@ -5,8 +5,27 @@ import { Student } from "../../domain/entities/Student.js";
 export class PrismaStudentRepository implements IStudentRepository {
   private prisma = prisma;
 
+  private mapToDomain(s: any): Student {
+    return new Student(
+      s.id,
+      s.studentNumber,
+      s.name,
+      s.className,
+      s.schoolUnitId,
+      s.parentId,
+      s.enrollmentYear,
+      s.discountAmount,
+      s.discountEquipment,
+      s.discountExtracurricular,
+      s.registrationStatus,
+      s.isFullday ?? false,
+      s.status,
+      s.sdExtracurriculars
+    );
+  }
+
   async create(
-    studentData: Omit<Student, "id" | "parentId"> & { parentId?: number },
+    studentData: Omit<Student, "id" | "parentId"> & { parentId?: number; sdExtracurricularIds?: number[] },
     parentData?: {
       name: string;
       email: string;
@@ -35,33 +54,38 @@ export class PrismaStudentRepository implements IStudentRepository {
         throw new Error("Parent ID is required if parent data is not provided");
       }
 
+      const studentCreatePayload: any = {
+        studentNumber: studentData.studentNumber,
+        name: studentData.name,
+        className: studentData.className,
+        schoolUnitId: studentData.schoolUnitId,
+        enrollmentYear: studentData.enrollmentYear,
+        discountAmount: studentData.discountAmount,
+        discountEquipment: studentData.discountEquipment || 0,
+        discountExtracurricular: studentData.discountExtracurricular || 0,
+        registrationStatus: studentData.registrationStatus || "BARU",
+        isFullday: studentData.isFullday ?? false,
+        parentId: finalParentId,
+        status: studentData.status || "ACTIVE",
+      };
+
+      if (studentData.sdExtracurricularIds) {
+        studentCreatePayload.sdExtracurriculars = {
+          connect: studentData.sdExtracurricularIds.map((eid) => ({ id: eid })),
+        };
+      }
+
       const newStudent = await tx.student.create({
-        data: {
-          studentNumber: studentData.studentNumber,
-          name: studentData.name,
-          className: studentData.className,
-          schoolUnitId: studentData.schoolUnitId,
-          enrollmentYear: studentData.enrollmentYear,
-          discountAmount: studentData.discountAmount,
-          parentId: finalParentId,
-          status: studentData.status || "ACTIVE",
+        data: studentCreatePayload,
+        include: {
+          sdExtracurriculars: true,
         },
       });
 
       return newStudent;
     });
 
-    return new Student(
-      result.id,
-      result.studentNumber,
-      result.name,
-      result.className,
-      result.schoolUnitId,
-      result.parentId,
-      result.enrollmentYear,
-      result.discountAmount,
-      result.status
-    );
+    return this.mapToDomain(result);
   }
 
   async findAll(filter?: {
@@ -117,22 +141,12 @@ export class PrismaStudentRepository implements IStudentRepository {
             phoneNumber: true,
           },
         },
+        sdExtracurriculars: true,
       },
     });
 
     return students.map((s) => {
-      const student = new Student(
-        s.id,
-        s.studentNumber,
-        s.name,
-        s.className,
-        s.schoolUnitId,
-        s.parentId,
-        s.enrollmentYear,
-        s.discountAmount,
-        s.status
-      );
-
+      const student = this.mapToDomain(s);
       return Object.assign(student, { parent: s.parent });
     });
   }
@@ -140,41 +154,27 @@ export class PrismaStudentRepository implements IStudentRepository {
   async findById(id: number): Promise<Student | null> {
     const student = await this.prisma.student.findUnique({
       where: { id },
+      include: {
+        sdExtracurriculars: true,
+      },
     });
 
     if (!student) return null;
 
-    return new Student(
-      student.id,
-      student.studentNumber,
-      student.name,
-      student.className,
-      student.schoolUnitId,
-      student.parentId,
-      student.enrollmentYear,
-      student.discountAmount,
-      student.status
-    );
+    return this.mapToDomain(student);
   }
 
   async findByStudentNumber(studentNumber: string): Promise<Student | null> {
     const student = await this.prisma.student.findUnique({
       where: { studentNumber },
+      include: {
+        sdExtracurriculars: true,
+      },
     });
 
     if (!student) return null;
 
-    return new Student(
-      student.id,
-      student.studentNumber,
-      student.name,
-      student.className,
-      student.schoolUnitId,
-      student.parentId,
-      student.enrollmentYear,
-      student.discountAmount,
-      student.status
-    );
+    return this.mapToDomain(student);
   }
 
   async update(
@@ -185,11 +185,16 @@ export class PrismaStudentRepository implements IStudentRepository {
       schoolUnitId?: number;
       enrollmentYear?: number;
       discountAmount?: number;
+      discountEquipment?: number;
+      discountExtracurricular?: number;
+      registrationStatus?: string;
+      isFullday?: boolean;
       birthDate?: string | null;
       parentName?: string;
       parentEmail?: string | null;
       parentPhoneNumber?: string;
       status?: string;
+      sdExtracurricularIds?: number[];
     }
   ): Promise<Student> {
     const {
@@ -198,11 +203,15 @@ export class PrismaStudentRepository implements IStudentRepository {
       schoolUnitId,
       enrollmentYear,
       discountAmount,
-      birthDate,
+      discountEquipment,
+      discountExtracurricular,
+      registrationStatus,
+      isFullday,
       parentName,
       parentEmail,
       parentPhoneNumber,
       status,
+      sdExtracurricularIds,
     } = data;
 
     const studentData: any = {};
@@ -210,10 +219,19 @@ export class PrismaStudentRepository implements IStudentRepository {
     if (className !== undefined) studentData.className = className;
     if (enrollmentYear !== undefined) studentData.enrollmentYear = enrollmentYear;
     if (discountAmount !== undefined) studentData.discountAmount = discountAmount;
+    if (discountEquipment !== undefined) studentData.discountEquipment = discountEquipment;
+    if (discountExtracurricular !== undefined) studentData.discountExtracurricular = discountExtracurricular;
+    if (registrationStatus !== undefined) studentData.registrationStatus = registrationStatus;
+    if (isFullday !== undefined) studentData.isFullday = isFullday;
     if (status !== undefined) studentData.status = status;
     if (schoolUnitId !== undefined) {
       studentData.schoolUnit = {
         connect: { id: schoolUnitId }
+      };
+    }
+    if (sdExtracurricularIds !== undefined) {
+      studentData.sdExtracurriculars = {
+        set: sdExtracurricularIds.map((eid) => ({ id: eid })),
       };
     }
 
@@ -241,19 +259,12 @@ export class PrismaStudentRepository implements IStudentRepository {
           },
         }),
       },
+      include: {
+        sdExtracurriculars: true,
+      },
     });
 
-    return new Student(
-      updated.id,
-      updated.studentNumber,
-      updated.name,
-      updated.className,
-      updated.schoolUnitId,
-      updated.parentId,
-      updated.enrollmentYear,
-      updated.discountAmount,
-      updated.status
-    );
+    return this.mapToDomain(updated);
   }
 
   async delete(id: number): Promise<void> {

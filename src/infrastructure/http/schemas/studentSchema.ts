@@ -11,6 +11,10 @@ export const createStudentSchema = z.object({
     schoolUnitId: z.number({ required_error: "ID unit sekolah wajib diisi" }).int(),
     enrollmentYear: z.number({ required_error: "Tahun angkatan wajib diisi" }).int(),
     discountAmount: z.number().min(0).optional(),
+    discountEquipment: z.number().min(0).optional(),
+    discountExtracurricular: z.number().min(0).optional(),
+    registrationStatus: z.string().optional().default("BARU"),
+    isFullday: z.boolean().optional(),
     parentName: z.string({ required_error: "Nama orang tua wajib diisi" }),
     parentEmail: z
       .string()
@@ -19,5 +23,6 @@ export const createStudentSchema = z.object({
       .nullable(),
     parentPhoneNumber: z.string({ required_error: "Nomor HP orang tua wajib diisi" }),
     birthDate: z.string().optional().nullable(),
+    sdExtracurricularIds: z.array(z.number().int()).optional(),
   }),
 });

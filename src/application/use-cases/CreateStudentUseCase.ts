@@ -12,9 +12,14 @@ export interface CreateStudentRequest {
   schoolUnitId: number;
   enrollmentYear: number;
   discountAmount: number;
+  discountEquipment?: number;
+  discountExtracurricular?: number;
+  registrationStatus?: string;
+  isFullday?: boolean;
   parentName: string;
   parentEmail?: string;
   parentPhoneNumber: string;
+  sdExtracurricularIds?: number[];
 }
 
 export class CreateStudentUseCase {
@@ -75,17 +80,26 @@ export class CreateStudentUseCase {
     }
 
     // 4. Simpan data siswa
+    const studentPayload: any = {
+      studentNumber: data.studentNumber,
+      name: data.name,
+      className: data.className,
+      schoolUnitId: data.schoolUnitId,
+      enrollmentYear: data.enrollmentYear,
+      discountAmount: data.discountAmount,
+      discountEquipment: data.discountEquipment || 0,
+      discountExtracurricular: data.discountExtracurricular || 0,
+      registrationStatus: data.registrationStatus || "BARU",
+      isFullday: data.isFullday ?? false,
+      parentId: parentId as any,
+      status: "ACTIVE",
+    };
+    if (data.sdExtracurricularIds !== undefined) {
+      studentPayload.sdExtracurricularIds = data.sdExtracurricularIds;
+    }
+
     return this.studentRepository.create(
-      {
-        studentNumber: data.studentNumber,
-        name: data.name,
-        className: data.className,
-        schoolUnitId: data.schoolUnitId,
-        enrollmentYear: data.enrollmentYear,
-        discountAmount: data.discountAmount,
-        parentId: parentId as any,
-        status: "ACTIVE",
-      },
+      studentPayload,
       parentDataToCreate
     );
   }

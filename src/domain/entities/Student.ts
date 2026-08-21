@@ -8,6 +8,11 @@ export class Student {
     public readonly parentId: number,
     public readonly enrollmentYear: number,
     public readonly discountAmount: number,
-    public readonly status: string = "ACTIVE"
+    public readonly discountEquipment: number = 0,
+    public readonly discountExtracurricular: number = 0,
+    public readonly registrationStatus: string = "BARU",
+    public readonly isFullday: boolean = false,
+    public readonly status: string = "ACTIVE",
+    public readonly sdExtracurriculars?: any[]
   ) {}
 }

@@ -34,6 +34,7 @@ enum InvoiceType {
   DAFTAR_ULANG
   UANG_PERALATAN
   SERAGAM
+  FULLDAY
 }
 
 enum InvoiceStatus {
@@ -57,11 +58,14 @@ model SchoolUnit {
   name String @db.VarChar(50) // Contoh: "RA", "TK", "SD"
 
   // Relasi (Satu Unit Sekolah memiliki banyak relasi di bawah ini)
-  users        User[]
-  students     Student[]
-  transactions Transaction[]
-  categories   Category[]
-  sppTariffs   SppTariff[]
+  users                 User[]
+  students              Student[]
+  transactions          Transaction[]
+  categories            Category[]
+  sppTariffs            SppTariff[]
+  extraEquipmentTariffs ExtraEquipmentTariff[]
+  reRegistrationTariffs ReRegistrationTariff[]
+  fulldayTariffs        FulldayTariff[]
 
   @@map("school_units")
 }
@@ -104,21 +108,26 @@ model SppTariff {
 }
 
 model Student {
-  id                 Int         @id @default(autoincrement())
-  studentNumber      String      @unique @map("student_number") @db.VarChar(50) // NIS / Nomor Induk Siswa
-  name               String      @db.VarChar(255)
-  className          String      @map("class_name") @db.VarChar(50)
-  schoolUnitId       Int         @map("school_unit_id")
-  parentId           Int         @map("parent_id")
-  enrollmentYear     Int         @map("enrollment_year") // Tahun angkatan masuk
-  discountAmount     Int         @default(0) @map("discount_percentage") // Nominal diskon dalam Rupiah (potongan langsung)
-  status             String      @default("ACTIVE") @db.VarChar(20)
+  id                      Int         @id @default(autoincrement())
+  studentNumber           String      @unique @map("student_number") @db.VarChar(50) // NIS / Nomor Induk Siswa
+  name                    String      @db.VarChar(255)
+  className               String      @map("class_name") @db.VarChar(50)
+  schoolUnitId            Int         @map("school_unit_id")
+  parentId                Int         @map("parent_id")
+  enrollmentYear          Int         @map("enrollment_year") // Tahun angkatan masuk
+  discountAmount          Int         @default(0) @map("discount_percentage") // Nominal diskon dalam Rupiah (potongan langsung)
+  discountEquipment       Int         @default(0) @map("discount_equipment")
+  discountExtracurricular Int         @default(0) @map("discount_extracurricular")
+  registrationStatus      String      @default("BARU") @map("registration_status") @db.VarChar(50)
+  isFullday               Boolean     @default(false) @map("is_fullday")
+  status                  String      @default("ACTIVE") @db.VarChar(20)
 
   // Relasi
   // Restrict mencegah penghapusan unit/parent jika masih ada data siswa aktif yang terikat dengannya
-  schoolUnit         SchoolUnit  @relation(fields: [schoolUnitId], references: [id], onDelete: Restrict)
-  parent             User        @relation("ParentToStudents", fields: [parentId], references: [id], onDelete: Restrict)
-  invoices           Invoice[]
+  schoolUnit              SchoolUnit  @relation(fields: [schoolUnitId], references: [id], onDelete: Restrict)
+  parent                  User        @relation("ParentToStudents", fields: [parentId], references: [id], onDelete: Restrict)
+  invoices                Invoice[]
+  sdExtracurriculars      SdExtracurricular[] @relation("StudentSdExtracurriculars")
 
   @@map("students")
 }
@@ -193,4 +202,68 @@ model ActivityLog {
 
   @@map("activity_logs")
 }
+
+model ExtraEquipmentTariff {
+  id                          Int        @id @default(autoincrement())
+  schoolUnitId                Int        @map("school_unit_id")
+  enrollmentYear              Int        @map("enrollment_year")
+  level                       String     @db.VarChar(50) // "KB", "A", atau "B"
+  
+  // Murid Baru (BARU)
+  equipmentFeeNew             Int        @default(0) @map("equipment_fee_new")
+  extracurricularFeeNew       Int        @default(0) @map("extracurricular_fee_new")
+
+  // Naik Kelas (NAIK_KELAS)
+  equipmentFeePromotion       Int        @default(0) @map("equipment_fee_promotion")
+  extracurricularFeePromotion Int        @default(0) @map("extracurricular_fee_promotion")
+
+  // Tinggal Kelas (TINGGAL_KELAS)
+  equipmentFeeRepeat          Int        @default(0) @map("equipment_fee_repeat")
+  extracurricularFeeRepeat    Int        @default(0) @map("extracurricular_fee_repeat")
+
+  // Fallbacks
+  equipmentFee                Int        @default(0) @map("equipment_fee")
+  extracurricularFee          Int        @default(0) @map("extracurricular_fee")
+
+  schoolUnit                  SchoolUnit @relation(fields: [schoolUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolUnitId, enrollmentYear, level], name: "uq_school_unit_enrollment_year_level")
+  @@map("extra_equipment_tariffs")
+}
+
+model ReRegistrationTariff {
+  id             Int        @id @default(autoincrement())
+  schoolUnitId   Int        @map("school_unit_id")
+  enrollmentYear Int        @map("enrollment_year")
+  newStudentFee  Int        @default(0) @map("new_student_fee")
+  promotionFee   Int        @default(0) @map("promotion_fee")
+  repeatFee      Int        @default(0) @map("repeat_fee")
+
+  schoolUnit     SchoolUnit @relation(fields: [schoolUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolUnitId, enrollmentYear], name: "uq_rereg_school_unit_enrollment_year")
+  @@map("re_registration_tariffs")
+}
+
+model SdExtracurricular {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(100)
+  fee       Int       @default(0)
+  students  Student[] @relation("StudentSdExtracurriculars")
+
+  @@map("sd_extracurriculars")
+}
+
+model FulldayTariff {
+  id             Int        @id @default(autoincrement())
+  schoolUnitId   Int        @map("school_unit_id")
+  enrollmentYear Int        @map("enrollment_year")
+  monthlyFee     Int        @default(0) @map("monthly_fee")
+
+  schoolUnit     SchoolUnit @relation(fields: [schoolUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolUnitId, enrollmentYear], name: "uq_fullday_school_unit_enrollment_year")
+  @@map("fullday_tariffs")
+}
+
 
