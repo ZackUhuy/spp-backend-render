@@ -523,6 +523,21 @@ export class InvoiceController {
           }
         }
 
+        let fulldayFee = 0;
+        if (student.isFullday && (student.schoolUnitId === 1 || student.schoolUnitId === 2)) {
+          const ft = await (prisma as any).fulldayTariff.findUnique({
+            where: {
+              uq_fullday_school_unit_enrollment_year: {
+                schoolUnitId: student.schoolUnitId,
+                enrollmentYear: student.enrollmentYear,
+              },
+            },
+          });
+          if (ft) {
+            fulldayFee = ft.monthlyFee;
+          }
+        }
+
         // Apply student-specific equipment and extracurricular discounts
         const equipDiscountApplied = Math.min(equipmentFee, student.discountEquipment || 0);
         const equipNetAmount = equipmentFee - equipDiscountApplied;
@@ -550,7 +565,8 @@ export class InvoiceController {
               { type: "SPP", base: baseSppAmount, net: sppNetAmount, month: 7 },
               { type: "UANG_PERALATAN", base: equipmentFee, net: equipNetAmount, month: 7 },
               { type: "EKSTRAKURIKULER", base: extracurricularFee, net: extraNetAmount, month: 7 },
-              { type: "SERAGAM", base: tariff.uniformFee, net: tariff.uniformFee, month: 7 }
+              { type: "SERAGAM", base: tariff.uniformFee, net: tariff.uniformFee, month: 7 },
+              ...(fulldayFee > 0 ? [{ type: "FULLDAY", base: fulldayFee, net: fulldayFee, month: 7 }] : [])
             ];
 
         const invoices = feeTypes.map((fee) => {
@@ -1091,6 +1107,16 @@ export class InvoiceController {
             discountApplied = Math.min(baseAmount, student.discountExtracurricular || 0);
           } else if (itemType === "SERAGAM") {
             baseAmount = tariff.uniformFee;
+          } else if (itemType === "FULLDAY") {
+            const fulldayTariff = await (prisma as any).fulldayTariff.findUnique({
+              where: {
+                uq_fullday_school_unit_enrollment_year: {
+                  schoolUnitId: student.schoolUnitId,
+                  enrollmentYear: student.enrollmentYear,
+                },
+              },
+            });
+            baseAmount = fulldayTariff ? fulldayTariff.monthlyFee : 0;
           }
           amountToPay = baseAmount - discountApplied;
         }
@@ -1374,6 +1400,16 @@ export class InvoiceController {
             discountVal = student ? Number(student.discountExtracurricular || 0) : 0;
           } else if (itemType === "SERAGAM") {
             baseAmount = tariff ? Number(tariff.uniformFee) : 0;
+          } else if (itemType === "FULLDAY") {
+            const fulldayTariff = await (prisma as any).fulldayTariff.findUnique({
+              where: {
+                uq_fullday_school_unit_enrollment_year: {
+                  schoolUnitId: student.schoolUnitId,
+                  enrollmentYear: student.enrollmentYear,
+                },
+              },
+            });
+            baseAmount = fulldayTariff ? fulldayTariff.monthlyFee : 0;
           }
 
           discountApplied = Math.min(baseAmount, discountVal);
@@ -1789,52 +1825,67 @@ export class InvoiceController {
       }
 
       if (!statusSimulated) {
-        console.warn("Failing back ke simulasi pembayaran lokal untuk Pakasir.");
-        const invoice = await prisma.invoice.findUnique({
-          where: { midtransOrderId: orderId },
+        logger.warn("Failing back ke simulasi pembayaran lokal untuk Pakasir.");
+        const invoices = await prisma.invoice.findMany({
+          where: {
+            midtransOrderId: {
+              startsWith: orderId,
+            },
+          },
           include: { student: true },
         });
 
-        if (invoice && (invoice.status as any) !== "PAID") {
+        if (invoices.length > 0) {
           await prisma.$transaction(async (tx) => {
-            const actualAmount = Number(amount) || invoice.amount;
-            await tx.invoice.update({
-              where: { id: invoice.id },
-              data: {
-                status: "PAID" as any,
-                amount: actualAmount,
-                discountApplied: invoice.baseAmount - actualAmount,
-              },
-            });
+            for (const invoice of invoices) {
+              if ((invoice.status as any) === "PAID") continue;
 
-            let category = await tx.category.findFirst({
-              where: {
-                name: { equals: "SPP", mode: "insensitive" },
-                type: "INCOME",
-              },
-            });
-            if (!category) {
-              category = await tx.category.create({
+              await tx.invoice.update({
+                where: { id: invoice.id },
                 data: {
-                  name: "SPP",
+                  status: "PAID" as any,
+                },
+              });
+
+              let categoryName = "SPP";
+              if (invoice.invoiceType === "UANG_PENGEMBANGAN") categoryName = "Uang Pengembangan";
+              else if (invoice.invoiceType === "DAFTAR_ULANG") categoryName = "Daftar Ulang";
+              else if (invoice.invoiceType === "UANG_PERALATAN") categoryName = "Uang Peralatan";
+              else if (invoice.invoiceType === "EKSTRAKURIKULER") categoryName = "Uang Ekstrakurikuler";
+              else if (invoice.invoiceType === "SERAGAM") categoryName = "Uang Seragam";
+              else if (invoice.invoiceType === "FULLDAY") categoryName = "Uang Fullday";
+              else if (invoice.invoiceType === "KEGIATAN") categoryName = "Uang Kegiatan";
+              else if (invoice.invoiceType === "LAINNYA") categoryName = "Lain-lain";
+
+              let category = await tx.category.findFirst({
+                where: {
+                  name: { equals: categoryName, mode: "insensitive" },
                   type: "INCOME",
-                  schoolUnitId: null,
+                },
+              });
+              if (!category) {
+                category = await tx.category.create({
+                  data: {
+                    name: categoryName,
+                    type: "INCOME",
+                    schoolUnitId: null,
+                  },
+                });
+              }
+
+              await tx.transaction.create({
+                data: {
+                  type: "INCOME" as any,
+                  categoryId: category.id,
+                  paymentMethod: "MIDTRANS" as any,
+                  amount: invoice.amount,
+                  description: `Pembayaran ${categoryName} online (Simulasi Pakasir) bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
+                  schoolUnitId: invoice.student.schoolUnitId,
+                  recordedById: null,
+                  invoiceId: invoice.id,
                 },
               });
             }
-
-            await tx.transaction.create({
-              data: {
-                type: "INCOME" as any,
-                categoryId: category.id,
-                paymentMethod: "MIDTRANS" as any,
-                amount: Number(amount) || invoice.amount,
-                description: `Pembayaran SPP online (Simulasi Pakasir Lokal) bulan ${invoice.month} tahun ${invoice.year} untuk siswa ${invoice.student.name}`,
-                schoolUnitId: invoice.student.schoolUnitId,
-                recordedById: null,
-                invoiceId: invoice.id,
-              },
-            });
           });
         }
       }

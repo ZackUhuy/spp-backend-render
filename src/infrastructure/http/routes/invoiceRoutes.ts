@@ -85,6 +85,11 @@ router.post(
   invoiceController.handlePakasirWebhook.bind(invoiceController)
 );
 
+router.post(
+  "/pakasir/simulate",
+  invoiceController.simulatePakasirPayment.bind(invoiceController)
+);
+
 router.put(
   "/:id/status",
   authMiddleware,
