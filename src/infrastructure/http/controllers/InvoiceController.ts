@@ -281,7 +281,55 @@ export class InvoiceController {
         where,
       });
 
-      const classMap: Record<string, { unitId: number; className: string; students: any[] }> = {};
+      if (students.length === 0) {
+        res.status(200).json({
+          success: true,
+          message: "Rekap tunggakan SPP per kelas berhasil diambil",
+          data: [],
+        });
+        return;
+      }
+
+      const studentIds = students.map((s) => s.id);
+      const schoolUnitIds = Array.from(new Set(students.map((s) => s.schoolUnitId)));
+
+      // Batch query related data in parallel: SchoolUnits, SppTariffs, and Invoices
+      const [schoolUnits, tariffs, dbInvoices] = await Promise.all([
+        prisma.schoolUnit.findMany({
+          where: { id: { in: schoolUnitIds } },
+          select: { id: true, name: true },
+        }),
+        prisma.sppTariff.findMany({
+          where: { schoolUnitId: { in: schoolUnitIds } },
+        }),
+        prisma.invoice.findMany({
+          where: {
+            studentId: { in: studentIds },
+            invoiceType: "SPP" as any,
+            year,
+            month: { lte: upToMonth },
+          },
+          include: {
+            transactions: {
+              where: { type: "INCOME" as any },
+              select: { amount: true },
+            },
+          },
+        }),
+      ]);
+
+      // Create lookup maps for instant in-memory lookups
+      const unitMap = new Map<number, string>();
+      schoolUnits.forEach((u) => unitMap.set(u.id, u.name));
+
+      const tariffMap = new Map<string, number>();
+      tariffs.forEach((t) => tariffMap.set(`${t.schoolUnitId}-${t.enrollmentYear}`, t.amount));
+
+      const invoiceMap = new Map<string, typeof dbInvoices[0]>();
+      dbInvoices.forEach((inv) => invoiceMap.set(`${inv.studentId}-${inv.month}`, inv));
+
+      // Group students by class
+      const classMap: Record<string, { unitId: number; className: string; students: typeof students }> = {};
       students.forEach((s) => {
         const key = `${s.schoolUnitId}-${s.className}`;
         if (!classMap[key]) {
@@ -297,44 +345,24 @@ export class InvoiceController {
       const recap = [];
 
       for (const group of Object.values(classMap)) {
-        let totalStudentsInClass = group.students.length;
+        const totalStudentsInClass = group.students.length;
         let studentsWithUnpaid = 0;
         let totalUnpaidMonthsClass = 0;
         let totalUnpaidNominalClass = 0;
 
-        const schoolUnit = await prisma.schoolUnit.findUnique({
-          where: { id: group.unitId },
-          select: { name: true },
-        });
+        const schoolUnitName = unitMap.get(group.unitId) || "-";
 
         for (const student of group.students) {
-          const tariff = await prisma.sppTariff.findUnique({
-            where: {
-              uq_school_unit_enrollment_year: {
-                schoolUnitId: student.schoolUnitId,
-                enrollmentYear: student.enrollmentYear,
-              },
-            },
-          });
+          const tariffAmount = tariffMap.get(`${student.schoolUnitId}-${student.enrollmentYear}`);
+          if (tariffAmount === undefined) continue;
 
-          if (!tariff) continue;
-
-          const baseAmount = tariff.amount;
+          const baseAmount = tariffAmount;
           const discountApplied = Math.min(baseAmount, student.discountAmount);
           const netAmount = baseAmount - discountApplied;
 
           if (year < student.enrollmentYear) {
             continue;
           }
-
-          const dbInvoices = await prisma.invoice.findMany({
-            where: {
-              studentId: student.id,
-              invoiceType: "SPP" as any,
-              year,
-              month: { lte: upToMonth },
-            },
-          });
 
           let studentUnpaidMonths = 0;
           let studentUnpaidAmount = 0;
@@ -345,8 +373,9 @@ export class InvoiceController {
           } else if (year === 2026) {
             startMonth = 7;
           }
+
           for (let m = startMonth; m <= upToMonth; m++) {
-            const inv = dbInvoices.find((i) => i.month === m);
+            const inv = invoiceMap.get(`${student.id}-${m}`);
             if (!inv) {
               studentUnpaidMonths++;
               studentUnpaidAmount += netAmount;
@@ -354,11 +383,7 @@ export class InvoiceController {
               studentUnpaidMonths++;
               studentUnpaidAmount += inv.amount;
             } else if ((inv.status as any) === "PARTIALLY_PAID") {
-              const txSum = await prisma.transaction.aggregate({
-                where: { invoiceId: inv.id, type: "INCOME" as any },
-                _sum: { amount: true },
-              });
-              const paid = txSum._sum.amount || 0;
+              const paid = inv.transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
               const unpaidPart = Math.max(0, inv.amount - paid);
               if (unpaidPart > 0) {
                 studentUnpaidMonths++;
@@ -376,8 +401,8 @@ export class InvoiceController {
 
         recap.push({
           schoolUnitId: group.unitId,
-          schoolUnit: schoolUnit?.name || "-",
-          schoolUnitName: schoolUnit?.name || "-",
+          schoolUnit: schoolUnitName,
+          schoolUnitName: schoolUnitName,
           className: group.className,
           totalStudents: totalStudentsInClass,
           unpaidStudentsCount: studentsWithUnpaid,
@@ -386,6 +411,14 @@ export class InvoiceController {
           totalUnpaidAmount: totalUnpaidNominalClass,
         });
       }
+
+      // Sort recap by unit and class name
+      recap.sort((a, b) => {
+        if (a.schoolUnitId !== b.schoolUnitId) {
+          return a.schoolUnitId - b.schoolUnitId;
+        }
+        return a.className.localeCompare(b.className, undefined, { numeric: true, sensitivity: 'base' });
+      });
 
       res.status(200).json({
         success: true,
@@ -1475,13 +1508,16 @@ export class InvoiceController {
       // Fallback to mock Pakasir response if API call fails
       if (!pakasirData || !pakasirData.payment) {
         console.warn("Menggunakan response tiruan (mock) Pakasir untuk pengujian local.");
+        const calculatedFee = paymentMethod === "qris" 
+          ? Math.round(totalAmountToPay * 0.008)
+          : 3500;
         pakasirData = {
           payment: {
             project: projectSlug,
             order_id: orderId,
             amount: totalAmountToPay,
-            fee: 1000,
-            total_payment: totalAmountToPay + 1000,
+            fee: calculatedFee,
+            total_payment: totalAmountToPay + calculatedFee,
             payment_method: paymentMethod,
             payment_number: paymentMethod === "qris" 
               ? "00020101021226610016ID.CO.SHOPEE.WWW01189360091800216005230208216005230303UME51440014ID.CO.QRIS.WWW0215ID10243228429300303UME5204792953033605409100003.005802ID5907Pakasir6012KAB. KEBUMEN61055439262230519SP25RZRATEQI2HQ65Q46304A079"
