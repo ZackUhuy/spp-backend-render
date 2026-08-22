@@ -129,6 +129,7 @@ model Student {
   invoices                Invoice[]
   sdExtracurriculars      SdExtracurricular[] @relation("StudentSdExtracurriculars")
 
+  @@index([schoolUnitId, className])
   @@map("students")
 }
 
@@ -167,6 +168,7 @@ model Invoice {
 
   // Composite Unique Key: Mencegah tagihan ganda untuk jenis, bulan, dan tahun yang sama pada siswa yang sama
   @@unique([studentId, month, year, invoiceType], name: "uq_student_billing_period")
+  @@index([studentId, invoiceType, year])
   @@map("invoices")
 }
 
