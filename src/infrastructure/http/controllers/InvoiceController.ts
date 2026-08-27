@@ -90,7 +90,7 @@ export class InvoiceController {
       } else if ((user.role as any) === "PARENT") {
         where.parentId = user.id;
       } else {
-        if (req.query.schoolUnitId) {
+        if (req.query.schoolUnitId && !isNaN(Number(req.query.schoolUnitId))) {
           where.schoolUnitId = Number(req.query.schoolUnitId);
         }
         if (req.query.className) {
@@ -156,23 +156,27 @@ export class InvoiceController {
         for (let m = startMonth; m <= upToMonth; m++) {
           const inv = dbInvoices.find((i) => i.month === m);
           if (!inv) {
-            totalUnpaidMonths++;
-            totalUnpaidAmount += netAmount;
-            unpaidMonthsList.push({
-              month: m,
-              status: "PENDING",
-              totalAmount: netAmount,
-              unpaidAmount: netAmount,
-            });
+            if (netAmount > 0) {
+              totalUnpaidMonths++;
+              totalUnpaidAmount += netAmount;
+              unpaidMonthsList.push({
+                month: m,
+                status: "PENDING",
+                totalAmount: netAmount,
+                unpaidAmount: netAmount,
+              });
+            }
           } else if ((inv.status as any) === "PENDING") {
-            totalUnpaidMonths++;
-            totalUnpaidAmount += inv.amount;
-            unpaidMonthsList.push({
-              month: m,
-              status: "PENDING",
-              totalAmount: inv.amount,
-              unpaidAmount: inv.amount,
-            });
+            if (netAmount > 0) {
+              totalUnpaidMonths++;
+              totalUnpaidAmount += netAmount;
+              unpaidMonthsList.push({
+                month: m,
+                status: "PENDING",
+                totalAmount: netAmount,
+                unpaidAmount: netAmount,
+              });
+            }
           } else if ((inv.status as any) === "PARTIALLY_PAID") {
             const txSum = await prisma.transaction.aggregate({
               where: { invoiceId: inv.id, type: "INCOME" as any },
@@ -269,7 +273,7 @@ export class InvoiceController {
           where.className = userClassName;
         }
       } else {
-        if (req.query.schoolUnitId) {
+        if (req.query.schoolUnitId && !isNaN(Number(req.query.schoolUnitId))) {
           where.schoolUnitId = Number(req.query.schoolUnitId);
         }
         if (req.query.className) {
@@ -377,11 +381,15 @@ export class InvoiceController {
           for (let m = startMonth; m <= upToMonth; m++) {
             const inv = invoiceMap.get(`${student.id}-${m}`);
             if (!inv) {
-              studentUnpaidMonths++;
-              studentUnpaidAmount += netAmount;
+              if (netAmount > 0) {
+                studentUnpaidMonths++;
+                studentUnpaidAmount += netAmount;
+              }
             } else if ((inv.status as any) === "PENDING") {
-              studentUnpaidMonths++;
-              studentUnpaidAmount += inv.amount;
+              if (netAmount > 0) {
+                studentUnpaidMonths++;
+                studentUnpaidAmount += netAmount;
+              }
             } else if ((inv.status as any) === "PARTIALLY_PAID") {
               const paid = inv.transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
               const unpaidPart = Math.max(0, inv.amount - paid);
