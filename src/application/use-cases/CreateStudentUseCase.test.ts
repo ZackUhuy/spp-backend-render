@@ -117,12 +117,32 @@ describe('CreateStudentUseCase', () => {
     );
   });
 
-  it('should throw error if SPP tariff is not configured', async () => {
+  it('should auto-create default SPP tariff if not configured', async () => {
     mockStudentRepository.findByStudentNumber.mockResolvedValue(null);
     mockSppTariffRepository.findByUnitAndYear.mockResolvedValue(null);
-
-    await expect(createStudentUseCase.execute(studentData)).rejects.toThrow(
-      'Gagal: Tarif dasar SPP untuk unit dan angkatan ini belum dikonfigurasi'
+    mockSppTariffRepository.create.mockResolvedValue({ id: 99, schoolUnitId: 1, enrollmentYear: 2023, amount: 150000 } as any);
+    const existingParent = new User(10, 'Parent Doe', 'parent@example.com', '08123456789', 'hash', 'PARENT', null);
+    const expectedStudent = new Student(
+      1,
+      studentData.studentNumber,
+      studentData.name,
+      studentData.className,
+      studentData.schoolUnitId,
+      10,
+      studentData.enrollmentYear,
+      studentData.discountAmount
     );
+    mockUserRepository.findByPhoneNumber.mockResolvedValue(existingParent);
+    mockStudentRepository.create.mockResolvedValue(expectedStudent);
+
+    const result = await createStudentUseCase.execute(studentData);
+    expect(mockSppTariffRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schoolUnitId: studentData.schoolUnitId,
+        enrollmentYear: studentData.enrollmentYear,
+        amount: 150000,
+      })
+    );
+    expect(result).toBeDefined();
   });
 });

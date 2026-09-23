@@ -44,7 +44,18 @@ export class UpdateStudentUseCase {
       await this.invoiceRepository.deletePendingByStudentId(id);
     }
 
-    return this.studentRepository.update(id, data);
+    const sanitizedData = { ...data };
+    if (sanitizedData.discountAmount !== undefined) {
+      sanitizedData.discountAmount = Math.max(0, sanitizedData.discountAmount || 0);
+    }
+    if (sanitizedData.discountEquipment !== undefined) {
+      sanitizedData.discountEquipment = Math.max(0, sanitizedData.discountEquipment || 0);
+    }
+    if (sanitizedData.discountExtracurricular !== undefined) {
+      sanitizedData.discountExtracurricular = Math.max(0, sanitizedData.discountExtracurricular || 0);
+    }
+
+    return this.studentRepository.update(id, sanitizedData);
   }
 }
 

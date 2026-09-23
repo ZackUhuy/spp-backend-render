@@ -267,6 +267,12 @@ export class GetStudentInvoicesUseCase {
           existing.baseAmount = baseAmount;
           existing.discountApplied = discountApplied;
           existing.amount = netAmount;
+          if (existing.status === "PENDING" && existing.transactions && existing.transactions.length > 0) {
+            const paidSum = existing.transactions.reduce((s: number, t: any) => s + (t.amount || 0), 0);
+            if (paidSum >= netAmount) {
+              existing.transactions = [];
+            }
+          }
         }
         return existing;
       }

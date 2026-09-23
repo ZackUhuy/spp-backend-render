@@ -12,11 +12,12 @@ export class LoginUseCase {
   async execute(identifier: string, password: string): Promise<User> {
     let user: User | null = null;
 
-    if (identifier.includes("@")) {
-      user = await this.userRepository.findByEmail(identifier);
+    const cleanIdentifier = identifier.trim();
+    if (cleanIdentifier.includes("@")) {
+      user = await this.userRepository.findByEmail(cleanIdentifier.toLowerCase());
     } else {
       // Asumsi jika bukan email, maka nomor HP (murni angka)
-      user = await this.userRepository.findByPhoneNumber(identifier);
+      user = await this.userRepository.findByPhoneNumber(cleanIdentifier);
     }
 
     if (!user || !user.password) {

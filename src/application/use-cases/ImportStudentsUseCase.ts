@@ -115,9 +115,9 @@ export class ImportStudentsUseCase {
 
         const schoolUnitId = this.getUnitIdByName(unitName);
         const enrollmentYear = Number(enrollmentYearStr) || new Date().getFullYear();
-        const discountAmount = Number(discountStr) || 0;
-        const discountEquipment = Number(discountEquipmentStr) || 0;
-        const discountExtracurricular = Number(discountExtracurricularStr) || 0;
+        const discountAmount = Math.max(0, Number(discountStr) || 0);
+        const discountEquipment = Math.max(0, Number(discountEquipmentStr) || 0);
+        const discountExtracurricular = Math.max(0, Number(discountExtracurricularStr) || 0);
 
         if (user.role === "UNIT_ADMIN" && schoolUnitId !== user.schoolUnitId) {
           throw new Error(`Akses ditolak: Baris ${index + 1} berada pada unit yang berbeda dari kewenangan Anda`);
