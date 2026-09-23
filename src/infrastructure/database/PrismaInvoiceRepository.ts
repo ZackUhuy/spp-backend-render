@@ -253,7 +253,11 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
         data: { status: status as any },
       });
 
-      if (status === "PAID" && paymentDetails) {
+      if (status === "PENDING") {
+        await tx.transaction.deleteMany({
+          where: { invoiceId: id },
+        });
+      } else if (status === "PAID" && paymentDetails) {
         const existingTx = await tx.transaction.findFirst({
           where: { invoiceId: id, type: "INCOME" as any },
         });
@@ -298,25 +302,22 @@ export class PrismaInvoiceRepository implements IInvoiceRepository {
   }
 
   async delete(id: number): Promise<void> {
-    const transactionCount = await this.prisma.transaction.count({
-      where: { invoiceId: id },
-    });
-
-    if (transactionCount > 0) {
-      throw new BadRequestError(
-        "Tidak dapat menghapus tagihan yang sudah memiliki riwayat transaksi pembayaran. Silakan ubah status tagihan menjadi VOID."
-      );
-    }
-
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
     });
 
-    if (invoice && invoice.status === "PAID") {
+    if (!invoice) return;
+
+    if (invoice.status === "PAID") {
       throw new BadRequestError(
-        "Tidak dapat menghapus tagihan yang sudah berstatus LUNAS (PAID)."
+        "Tidak dapat menghapus tagihan yang sudah berstatus LUNAS (PAID). Silakan ubah status menjadi Belum Lunas terlebih dahulu jika ingin menghapus."
       );
     }
+
+    // Hapus transaksi kasir terkait sebelum menghapus invoice
+    await this.prisma.transaction.deleteMany({
+      where: { invoiceId: id },
+    });
 
     await this.prisma.invoice.delete({
       where: { id },

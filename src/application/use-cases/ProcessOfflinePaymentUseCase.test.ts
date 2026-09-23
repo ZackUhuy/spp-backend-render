@@ -29,7 +29,7 @@ describe('ProcessOfflinePaymentUseCase', () => {
     recordedById: 10,
   };
 
-  const mockStudent = new Student(1, '123', 'John Doe', '10A', 1, 5, 2026, 10);
+  const mockStudent = new Student(1, '123', 'John Doe', '10A', 1, 5, 2026, 50000);
   const mockTariff = { id: 1, schoolUnitId: 1, year: 2026, amount: 500000 };
 
   it('should process payment when invoice does not exist', async () => {

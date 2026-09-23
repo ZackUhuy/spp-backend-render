@@ -186,6 +186,9 @@ export class ProcessOfflinePaymentUseCase {
     let currentPaid = 0;
     if (existingInvoice) {
       currentPaid = await this.invoiceRepository.getPaidAmount(existingInvoice.id);
+      if (existingInvoice.status === InvoiceStatus.PENDING && currentPaid >= totalInvoiceAmount) {
+        currentPaid = 0;
+      }
     }
 
     const targetInvoiceAmount = (existingInvoice && existingInvoice.status !== InvoiceStatus.PENDING)
